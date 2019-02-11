@@ -10,6 +10,6 @@ public class App {
 
 		PictureService pictureService = new PictureService();
 
-		pictureService.readPicture("C:\\git\\opencvcmsegment\\src\\main\\resources", "hkp.jpg");
+		pictureService.readPicture("D:\\git\\opencv-msegment\\src\\main\\resources", "hkp.jpg");
 	}
 }

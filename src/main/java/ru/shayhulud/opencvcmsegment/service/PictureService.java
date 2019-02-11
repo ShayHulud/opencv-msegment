@@ -31,7 +31,7 @@ public class PictureService {
 
 		try {
 			//load image content to temp file.
-			tempFile = new File(picturePath + "\\" + pictureName);
+			tempFile = new File(picturePath + File.pathSeparator + pictureName);
 			log.info("filled file size:{}", tempFile.length());
 
 			//Convert file to openCV Mat
@@ -107,15 +107,15 @@ public class PictureService {
 			Mat dst = Mat.zeros(markers.size(), CvType.CV_8UC3);
 			for (int i = 0; i < markers.rows(); i++) {
 				for (int j = 0; j < markers.cols(); j++) {
-					byte[] buff = new byte[(int) markers.depth() * markers.channels()];
-					int index = markers.get(i, j, buff);
+					double[] buff = markers.get(i, j);
+					int index = (int) buff[0];
 					if (index > 0 && index <= contours.size()) {
 						byte[] vec3b = new byte[3];
 						PixelUtil.setPixelRGBValue(
 							vec3b,
-							colors.get(index - i)[0],
-							colors.get(index - i)[1],
-							colors.get(index - i)[2]
+							colors.get(index - 1)[0],
+							colors.get(index - 1)[1],
+							colors.get(index - 1)[2]
 						);
 						dst.put(i, j, vec3b);
 					} else {
@@ -124,7 +124,7 @@ public class PictureService {
 				}
 			}
 
-			File result = new File(picturePath + "\\" + "dst.jpg");
+			File result = new File(picturePath + File.pathSeparator + "dst.jpg");
 			Imgcodecs.imwrite(result.getCanonicalPath(), dst);
 
 			//TODO:refactor to multiple methods, for ability to show image on different stages.

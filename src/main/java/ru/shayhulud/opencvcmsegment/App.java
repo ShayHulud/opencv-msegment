@@ -19,6 +19,8 @@ public class App {
 
 		PictureService pictureService = new PictureService();
 
-		pictureService.amw(args[0], args[1], args[2]);
+		pictureService.colorAutoMarkerWatershed(args[0], args[1], args[2]);
+		pictureService.shapeAutoMarkerWatershed(args[0], args[1], args[2]);
+
 	}
 }

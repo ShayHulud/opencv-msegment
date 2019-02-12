@@ -9,6 +9,7 @@ import org.opencv.core.MatOfInt4;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
+import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
@@ -28,13 +29,25 @@ import java.util.Random;
 @Slf4j
 public class PictureService {
 
+	//TODO: вынести в енум
+	private static final String COLOR_METHOD = "_color";
+	private static final String SHAPE_METHOD = "_shape";
+
 	private static final String BLACK_BACKGROUND_OUT_NAME_SUFFIX = "_01_black_bg.png";
 	private static final String LAPLASSIAN_SHARPER_OUT_NAME_SUFFIX = "_02_laplas_sharped.png";
 	private static final String BLACK_WHITED_OUT_NAME_SUFFIX = "_03_bw.png";
 	private static final String DISTANCE_TRANSFORMED_OUT_NAME_SUFFIX = "_04_distance.png";
 	private static final String DISTANCE_PEAKS_OUT_NAME_SUFFIX = "_05_distance_peaks.png";
 	private static final String MARKERS_OUT_NAME_SUFFIX = "_06_markers.png";
-	private static final String RESULT_OUT_NAME_SUFFIX = "_07_result.png";
+	private static final String RESULT_COLOR_OUT_NAME_SUFFIX = "_07_result.png";
+
+	private static final String GRAYED_PICTURE_NAME_SUFFIX = "_01_grayed.png";
+	private static final String BORDERS_NAME_SUFFIX = "_02_borders.png";
+	private static final String GRAY_BORDERS_OUT_NAME_SUFFIX = "_03_gray_borders.png";
+	private static final String MARKERS_SHAPE_OUT_NAME_SUFFIX = "_04_markers.png";
+	private static final String RESULT_SHAPE_OUT_NAME_SUFFIX = "_05_result.png";
+
+	private final Random rnd = new Random();
 
 
 	public ImageInfo readPicture(String picturePath, String outMainFolder, String pictureName) throws IOException {
@@ -46,7 +59,7 @@ public class PictureService {
 
 		//load image content to temp file.
 		File pictureFile = new File(pictureFullPath);
-		log.info("read picture size of:{}", pictureFile.length());
+		log.info("read picture size of: {}", pictureFile.length());
 
 		ii.setImageFileName(pictureName);
 
@@ -57,8 +70,8 @@ public class PictureService {
 		}
 		ii.setMat(src);
 
-		String outDname = createOutputFolder(picturePath, outMainFolder);
-		ii.setOutputDirName(outDname);
+		String outDirName = createOutputFolder(picturePath, outMainFolder);
+		ii.setOutputDirName(outDirName);
 		return ii;
 	}
 
@@ -69,34 +82,43 @@ public class PictureService {
 				outMainFolder + File.separator +
 				folderName
 		);
-		boolean created = outputFolder.mkdirs();
 		String dp = outputFolder.getCanonicalPath();
-		if (created) {
-			log.info("out directory {} is created", dp);
+		if (!outputFolder.isDirectory()) {
+			boolean created = outputFolder.mkdirs();
+			if (created) {
+				log.info("out directory {} is created", dp);
+			}
+		} else {
+			log.info("out directory {} already created", dp);
 		}
 		return dp;
 	}
 
-	private void showImage(Mat out, ImageInfo ii, String suffix) throws IOException {
+	private void showImage(Mat out, ImageInfo ii, String method, String suffix) throws IOException {
 		File result = new File(
 			ii.getOutputDirName() + File.separator +
-				ii.getImageFileName() + suffix
+				ii.getImageFileName() + method + suffix
 		);
 		String outputPath = result.getCanonicalPath();
 		Imgcodecs.imwrite(outputPath, out);
 		log.info("wrote image {}", outputPath);
 	}
 
-	private void showImage(Mat out, ImageInfo ii, String suffix, double multiplier) throws IOException {
+	private void showImage(Mat out, ImageInfo ii, String method, String suffix, double multiplier) throws IOException {
 		Mat multipliedOut = out.clone();
 		Core.multiply(multipliedOut, new Scalar(multiplier), multipliedOut);
-		showImage(multipliedOut, ii, suffix);
+		showImage(multipliedOut, ii, method, suffix);
 	}
 
-	public void amw(String picturePath, String outMainFolder, String pictureName) {
+	private byte[] generateBGRColor() {
+		byte b = (byte) this.rnd.nextInt(256);
+		byte g = (byte) this.rnd.nextInt(256);
+		byte r = (byte) this.rnd.nextInt(256);
+		return new byte[]{b, g, r};
+	}
 
+	public void colorAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
 		try {
-
 			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
 			Mat src = ii.getMat().clone();
 
@@ -110,7 +132,7 @@ public class PictureService {
 					}
 				}
 			}
-			showImage(src, ii, BLACK_BACKGROUND_OUT_NAME_SUFFIX);
+			showImage(src, ii, COLOR_METHOD, BLACK_BACKGROUND_OUT_NAME_SUFFIX);
 
 			Mat kernel = new MatOfFloat(1f, 1f, 1f, 1f, -8f, 1f, 1f, 1f, 1f);
 			//possibly need to clone from src or zeros of src;
@@ -123,22 +145,22 @@ public class PictureService {
 			imgResult.convertTo(imgResult, CvType.CV_8UC3);
 			imgLaplasian.convertTo(imgLaplasian, CvType.CV_8UC3);
 			imgResult.copyTo(src);
-			showImage(imgResult, ii, LAPLASSIAN_SHARPER_OUT_NAME_SUFFIX);
+			showImage(imgResult, ii, COLOR_METHOD, LAPLASSIAN_SHARPER_OUT_NAME_SUFFIX);
 
 			Mat bw = new Mat();
 			Imgproc.cvtColor(src, bw, Imgproc.COLOR_BGR2GRAY);
 			Imgproc.threshold(bw, bw, 40, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
-			showImage(bw, ii, BLACK_WHITED_OUT_NAME_SUFFIX);
+			showImage(bw, ii, COLOR_METHOD, BLACK_WHITED_OUT_NAME_SUFFIX);
 
 			Mat distance = new Mat();
 			Imgproc.distanceTransform(bw, distance, Imgproc.CV_DIST_L2, 5);
 			Core.normalize(distance, distance, 0, 1., Core.NORM_MINMAX);
-			showImage(distance, ii, DISTANCE_TRANSFORMED_OUT_NAME_SUFFIX, 1000);
+			showImage(distance, ii, COLOR_METHOD, DISTANCE_TRANSFORMED_OUT_NAME_SUFFIX, 1000);
 
 			Imgproc.threshold(distance, distance, .4, 1., Imgproc.THRESH_BINARY);
 			Mat kernel1 = Mat.ones(3, 3, CvType.CV_8UC1);
 			Imgproc.dilate(distance, distance, kernel1);
-			showImage(distance, ii, DISTANCE_PEAKS_OUT_NAME_SUFFIX, 1000);
+			showImage(distance, ii, COLOR_METHOD, DISTANCE_PEAKS_OUT_NAME_SUFFIX, 1000);
 
 			Mat dist_8u = new Mat();
 			distance.convertTo(dist_8u, CvType.CV_8U);
@@ -151,7 +173,7 @@ public class PictureService {
 			}
 			Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
 			//Output markers * 10000
-			showImage(markers, ii, MARKERS_OUT_NAME_SUFFIX, 10000d);
+			showImage(markers, ii, COLOR_METHOD, MARKERS_OUT_NAME_SUFFIX, 10000d);
 
 			Imgproc.watershed(src, markers);
 
@@ -160,19 +182,12 @@ public class PictureService {
 			Core.bitwise_not(mark, mark);
 
 			List<byte[]> colors = new ArrayList<>();
-			Random rnd = new Random();
 			for (int i = 0; i < contours.size(); i++) {
-				byte b = (byte) rnd.nextInt(256);
-				byte g = (byte) rnd.nextInt(256);
-				byte r = (byte) rnd.nextInt(256);
-				colors.add(new byte[]{b, g, r});
+				colors.add(generateBGRColor());
 			}
 
 			//define color for background
-			byte[] backroundColor = new byte[3];
-			backroundColor[0] = (byte) rnd.nextInt(256);
-			backroundColor[1] = (byte) rnd.nextInt(256);
-			backroundColor[2] = (byte) rnd.nextInt(256);
+			byte[] backroundColor = generateBGRColor();
 
 			Mat dst = Mat.zeros(markers.size(), CvType.CV_8UC3);
 			for (int i = 0; i < markers.rows(); i++) {
@@ -193,7 +208,88 @@ public class PictureService {
 					}
 				}
 			}
-			showImage(dst, ii, RESULT_OUT_NAME_SUFFIX);
+			showImage(dst, ii, COLOR_METHOD, RESULT_COLOR_OUT_NAME_SUFFIX);
+
+		} catch (IOException e) {
+			log.error("There is an error with file stream processing", e);
+		}
+	}
+
+	public void shapeAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
+		try {
+			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
+			Mat src = ii.getMat().clone();
+
+
+			Mat markerMask = new Mat();
+			Mat srcGray = new Mat();
+			Imgproc.cvtColor(src, markerMask, Imgproc.COLOR_BGR2GRAY);
+			Imgproc.cvtColor(markerMask, srcGray, Imgproc.COLOR_GRAY2BGR);
+			markerMask = Mat.zeros(markerMask.size(), markerMask.type());
+			showImage(srcGray, ii, SHAPE_METHOD, GRAYED_PICTURE_NAME_SUFFIX);
+
+			int kernelSize = 5;
+			//TODO: lowTreshold need to be various;
+			int lowTreshold = 10;
+			int ratio = 10;
+			Mat brdGray = new Mat();
+			Imgproc.cvtColor(src, brdGray, Imgproc.COLOR_BGR2GRAY);
+			Imgproc.blur(brdGray, brdGray, new Size(5, 5));
+			Imgproc.Canny(brdGray, brdGray, lowTreshold, lowTreshold * ratio);
+			Mat brdDst = Mat.zeros(src.size(), src.type());
+			src.copyTo(brdDst, brdGray);
+			showImage(brdDst, ii, SHAPE_METHOD, BORDERS_NAME_SUFFIX);
+			showImage(brdGray, ii, SHAPE_METHOD, GRAY_BORDERS_OUT_NAME_SUFFIX);
+			brdGray.copyTo(markerMask);
+
+			List<MatOfPoint> contours = new ArrayList<>();
+			MatOfInt4 hierarchy = new MatOfInt4();
+
+			Imgproc.findContours(markerMask, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_SIMPLE);
+			if (contours.isEmpty()) {
+				log.info("contours is empty");
+				return;
+			}
+
+			int compCount = 0;
+			Mat markers = Mat.zeros(markerMask.size(), CvType.CV_32S);
+			List<Integer> hierarchyList = hierarchy.toList();
+			for (int i = 0; i >= 0; i = hierarchyList.get(i), compCount++) {
+				Imgproc.drawContours(markers, contours, i, Scalar.all(compCount + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
+			}
+
+			if (compCount == 0) {
+				log.info("compCount = 0");
+				return;
+			}
+
+			List<byte[]> colors = new ArrayList<>();
+			for (int i = 0; i < compCount; i++) {
+				colors.add(generateBGRColor());
+			}
+
+			showImage(markers, ii, SHAPE_METHOD, MARKERS_SHAPE_OUT_NAME_SUFFIX);
+
+			Imgproc.watershed(src, markers);
+
+			Mat wshed = new Mat(markers.size(), CvType.CV_8UC3);
+			for (int i = 0; i < markers.rows(); i++) {
+				for (int j = 0; j < markers.cols(); j++) {
+					int index = (int) markers.get(i, j)[0];
+					if (index == -1) {
+						wshed.put(i, j, new byte[]{(byte) 255, (byte) 255, (byte) 255});
+					} else if (index <= 0 || index > compCount) {
+						wshed.put(i, j, new byte[]{(byte) 0, (byte) 0, (byte) 0});
+					} else {
+						wshed.put(i, j, colors.get(index - 1));
+					}
+				}
+			}
+
+			Core.multiply(wshed, new Scalar(0.5), wshed);
+			Core.multiply(srcGray, new Scalar(0.5), srcGray);
+			Core.add(wshed, srcGray, wshed);
+			showImage(wshed, ii, SHAPE_METHOD, RESULT_SHAPE_OUT_NAME_SUFFIX);
 
 		} catch (IOException e) {
 			log.error("There is an error with file stream processing", e);

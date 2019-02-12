@@ -28,13 +28,13 @@ import java.util.Random;
 @Slf4j
 public class PictureService {
 
-	private static final String BLACK_BACKGROUND_OUT_NAME_SUFFIX = "_01_black_bg.jpg";
-	private static final String LAPLASSIAN_SHARPER_OUT_NAME_SUFFIX = "_02_laplas_sharped.jpg";
-	private static final String BLACK_WHITED_OUT_NAME_SUFFIX = "_03_bw.jpg";
-	private static final String DISTANCE_TRANSFORMED_OUT_NAME_SUFFIX = "_04_distance.jpg";
-	private static final String DISTANCE_PEAKS_OUT_NAME_SUFFIX = "_05_distance_peaks.jpg";
-	private static final String MARKERS_OUT_NAME_SUFFIX = "_06_markers.jpg";
-	private static final String RESULT_OUT_NAME_SUFFIX = "_07_result.jpg";
+	private static final String BLACK_BACKGROUND_OUT_NAME_SUFFIX = "_01_black_bg.png";
+	private static final String LAPLASSIAN_SHARPER_OUT_NAME_SUFFIX = "_02_laplas_sharped.png";
+	private static final String BLACK_WHITED_OUT_NAME_SUFFIX = "_03_bw.png";
+	private static final String DISTANCE_TRANSFORMED_OUT_NAME_SUFFIX = "_04_distance.png";
+	private static final String DISTANCE_PEAKS_OUT_NAME_SUFFIX = "_05_distance_peaks.png";
+	private static final String MARKERS_OUT_NAME_SUFFIX = "_06_markers.png";
+	private static final String RESULT_OUT_NAME_SUFFIX = "_07_result.png";
 
 
 	public ImageInfo readPicture(String picturePath, String outMainFolder, String pictureName) throws IOException {
@@ -55,7 +55,6 @@ public class PictureService {
 		if (src.dataAddr() == 0) {
 			throw new IOException();
 		}
-		log.info("src Mat type is {}", src.type());
 		ii.setMat(src);
 
 		String outDname = createOutputFolder(picturePath, outMainFolder);
@@ -134,12 +133,12 @@ public class PictureService {
 			Mat distance = new Mat();
 			Imgproc.distanceTransform(bw, distance, Imgproc.CV_DIST_L2, 5);
 			Core.normalize(distance, distance, 0, 1., Core.NORM_MINMAX);
-			showImage(distance, ii, DISTANCE_TRANSFORMED_OUT_NAME_SUFFIX);
+			showImage(distance, ii, DISTANCE_TRANSFORMED_OUT_NAME_SUFFIX, 1000);
 
 			Imgproc.threshold(distance, distance, .4, 1., Imgproc.THRESH_BINARY);
 			Mat kernel1 = Mat.ones(3, 3, CvType.CV_8UC1);
 			Imgproc.dilate(distance, distance, kernel1);
-			showImage(distance, ii, DISTANCE_PEAKS_OUT_NAME_SUFFIX);
+			showImage(distance, ii, DISTANCE_PEAKS_OUT_NAME_SUFFIX, 1000);
 
 			Mat dist_8u = new Mat();
 			distance.convertTo(dist_8u, CvType.CV_8U);
@@ -160,8 +159,6 @@ public class PictureService {
 			markers.convertTo(mark, CvType.CV_8UC1);
 			Core.bitwise_not(mark, mark);
 
-			log.info("markers type {}", markers.type());
-
 			List<byte[]> colors = new ArrayList<>();
 			Random rnd = new Random();
 			for (int i = 0; i < contours.size(); i++) {
@@ -170,6 +167,12 @@ public class PictureService {
 				byte r = (byte) rnd.nextInt(256);
 				colors.add(new byte[]{b, g, r});
 			}
+
+			//define color for background
+			byte[] backroundColor = new byte[3];
+			backroundColor[0] = (byte) rnd.nextInt(256);
+			backroundColor[1] = (byte) rnd.nextInt(256);
+			backroundColor[2] = (byte) rnd.nextInt(256);
 
 			Mat dst = Mat.zeros(markers.size(), CvType.CV_8UC3);
 			for (int i = 0; i < markers.rows(); i++) {
@@ -186,7 +189,7 @@ public class PictureService {
 						);
 						dst.put(i, j, vec3b);
 					} else {
-						dst.put(i, j, new byte[]{0, 0, 0});
+						dst.put(i, j, backroundColor);
 					}
 				}
 			}

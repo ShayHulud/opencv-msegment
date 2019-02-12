@@ -11,11 +11,14 @@ import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
+import ru.shayhulud.opencvcmsegment.model.ImageInfo;
+import ru.shayhulud.opencvcmsegment.util.DateUtils;
 import ru.shayhulud.opencvcmsegment.util.PixelUtil;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 import java.util.Random;
 
@@ -25,22 +28,78 @@ import java.util.Random;
 @Slf4j
 public class PictureService {
 
-	public void readPicture(String picturePath, String pictureName) {
+	private static final String BLACK_BACKGROUND_OUT_NAME_SUFFIX = "_01_black_bg.jpg";
+	private static final String LAPLASSIAN_SHARPER_OUT_NAME_SUFFIX = "_02_laplas_sharped.jpg";
+	private static final String BLACK_WHITED_OUT_NAME_SUFFIX = "_03_bw.jpg";
+	private static final String DISTANCE_TRANSFORMED_OUT_NAME_SUFFIX = "_04_distance.jpg";
+	private static final String DISTANCE_PEAKS_OUT_NAME_SUFFIX = "_05_distance_peaks.jpg";
+	private static final String MARKERS_OUT_NAME_SUFFIX = "_06_markers.jpg";
+	private static final String RESULT_OUT_NAME_SUFFIX = "_07_result.jpg";
 
-		File tempFile = null;
+
+	public ImageInfo readPicture(String picturePath, String outMainFolder, String pictureName) throws IOException {
+
+		ImageInfo ii = new ImageInfo();
+
+		String pictureFullPath = picturePath + File.separator + pictureName;
+		log.info("pictureFullPath = {}", pictureFullPath);
+
+		//load image content to temp file.
+		File pictureFile = new File(pictureFullPath);
+		log.info("read picture size of:{}", pictureFile.length());
+
+		ii.setImageFileName(pictureName);
+
+		//Convert file to openCV Mat
+		Mat src = Imgcodecs.imread(pictureFile.getCanonicalPath());
+		if (src.dataAddr() == 0) {
+			throw new IOException();
+		}
+		log.info("src Mat type is {}", src.type());
+		ii.setMat(src);
+
+		String outDname = createOutputFolder(picturePath, outMainFolder);
+		ii.setOutputDirName(outDname);
+		return ii;
+	}
+
+	private String createOutputFolder(String picturePath, String outMainFolder) throws IOException {
+		String folderName = DateUtils.fromUnixFormatted(new Date().getTime());
+		File outputFolder = new File(
+			picturePath + File.separator +
+				outMainFolder + File.separator +
+				folderName
+		);
+		boolean created = outputFolder.mkdirs();
+		String dp = outputFolder.getCanonicalPath();
+		if (created) {
+			log.info("out directory {} is created", dp);
+		}
+		return dp;
+	}
+
+	private void showImage(Mat out, ImageInfo ii, String suffix) throws IOException {
+		File result = new File(
+			ii.getOutputDirName() + File.separator +
+				ii.getImageFileName() + suffix
+		);
+		String outputPath = result.getCanonicalPath();
+		Imgcodecs.imwrite(outputPath, out);
+		log.info("wrote image {}", outputPath);
+	}
+
+	private void showImage(Mat out, ImageInfo ii, String suffix, double multiplier) throws IOException {
+		Mat multipliedOut = out.clone();
+		Core.multiply(multipliedOut, new Scalar(multiplier), multipliedOut);
+		showImage(multipliedOut, ii, suffix);
+	}
+
+	public void amw(String picturePath, String outMainFolder, String pictureName) {
 
 		try {
-			//load image content to temp file.
-			tempFile = new File(picturePath + File.pathSeparator + pictureName);
-			log.info("filled file size:{}", tempFile.length());
 
-			//Convert file to openCV Mat
-			//TODO:check which path is needed
-			Mat src = Imgcodecs.imread(tempFile.getCanonicalPath());
-			if (src.dataAddr() == 0) {
-				throw new IOException();
-			}
-			log.info("src type {}", src.type());
+			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
+			Mat src = ii.getMat().clone();
 
 			for (int x = 0; x < src.rows(); x++) {
 				for (int y = 0; y < src.cols(); y++) {
@@ -52,7 +111,8 @@ public class PictureService {
 					}
 				}
 			}
-			//TODO:show blackfoned
+			showImage(src, ii, BLACK_BACKGROUND_OUT_NAME_SUFFIX);
+
 			Mat kernel = new MatOfFloat(1f, 1f, 1f, 1f, -8f, 1f, 1f, 1f, 1f);
 			//possibly need to clone from src or zeros of src;
 			Mat imgLaplasian = new Mat();
@@ -63,19 +123,24 @@ public class PictureService {
 			Core.subtract(sharp, imgLaplasian, imgResult);
 			imgResult.convertTo(imgResult, CvType.CV_8UC3);
 			imgLaplasian.convertTo(imgLaplasian, CvType.CV_8UC3);
-			//TODO:show sharped image - laplassianned
 			imgResult.copyTo(src);
+			showImage(imgResult, ii, LAPLASSIAN_SHARPER_OUT_NAME_SUFFIX);
+
 			Mat bw = new Mat();
 			Imgproc.cvtColor(src, bw, Imgproc.COLOR_BGR2GRAY);
 			Imgproc.threshold(bw, bw, 40, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
-			//TODO:show bw image
+			showImage(bw, ii, BLACK_WHITED_OUT_NAME_SUFFIX);
+
 			Mat distance = new Mat();
-			Imgproc.distanceTransform(bw, distance, Imgproc.CV_DIST_L2, 3);
-			Core.normalize(distance, distance, 0, 1, Core.NORM_MINMAX);
-			Imgproc.threshold(distance, distance, 0.4, 1, Imgproc.THRESH_BINARY);
+			Imgproc.distanceTransform(bw, distance, Imgproc.CV_DIST_L2, 5);
+			Core.normalize(distance, distance, 0, 1., Core.NORM_MINMAX);
+			showImage(distance, ii, DISTANCE_TRANSFORMED_OUT_NAME_SUFFIX);
+
+			Imgproc.threshold(distance, distance, .4, 1., Imgproc.THRESH_BINARY);
 			Mat kernel1 = Mat.ones(3, 3, CvType.CV_8UC1);
 			Imgproc.dilate(distance, distance, kernel1);
-			//TODO: show distance transform
+			showImage(distance, ii, DISTANCE_PEAKS_OUT_NAME_SUFFIX);
+
 			Mat dist_8u = new Mat();
 			distance.convertTo(dist_8u, CvType.CV_8U);
 			List<MatOfPoint> contours = new ArrayList<>();
@@ -86,12 +151,14 @@ public class PictureService {
 				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1);
 			}
 			Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
-			//TODO:Show markers with multiply on 10000
+			//Output markers * 10000
+			showImage(markers, ii, MARKERS_OUT_NAME_SUFFIX, 10000d);
+
 			Imgproc.watershed(src, markers);
+
 			Mat mark = Mat.zeros(markers.size(), CvType.CV_8UC1);
 			markers.convertTo(mark, CvType.CV_8UC1);
 			Core.bitwise_not(mark, mark);
-			//TODO: show mark image
 
 			log.info("markers type {}", markers.type());
 
@@ -123,12 +190,7 @@ public class PictureService {
 					}
 				}
 			}
-
-			File result = new File(picturePath + File.pathSeparator + "dst.jpg");
-			Imgcodecs.imwrite(result.getCanonicalPath(), dst);
-
-			//TODO:refactor to multiple methods, for ability to show image on different stages.
-
+			showImage(dst, ii, RESULT_OUT_NAME_SUFFIX);
 
 		} catch (IOException e) {
 			log.error("There is an error with file stream processing", e);

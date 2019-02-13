@@ -26,6 +26,7 @@ import java.util.Random;
 /**
  * Picture processing service.
  */
+//TODO: Сделать чтобы методы возвращали каждый свои маркеры, и отдельно метод, который применяет Watershed по маркерам.
 @Slf4j
 public class PictureService {
 
@@ -228,9 +229,8 @@ public class PictureService {
 			markerMask = Mat.zeros(markerMask.size(), markerMask.type());
 			showImage(srcGray, ii, SHAPE_METHOD, GRAYED_PICTURE_NAME_SUFFIX);
 
-			int kernelSize = 5;
 			//TODO: lowTreshold need to be various;
-			int lowTreshold = 10;
+			int lowTreshold = 5;
 			int ratio = 10;
 			Mat brdGray = new Mat();
 			Imgproc.cvtColor(src, brdGray, Imgproc.COLOR_BGR2GRAY);
@@ -242,6 +242,53 @@ public class PictureService {
 			showImage(brdGray, ii, SHAPE_METHOD, GRAY_BORDERS_OUT_NAME_SUFFIX);
 			brdGray.copyTo(markerMask);
 
+			//Removing small parts;
+			//vertical
+			Mat vKernel = new Mat(3, 3, markerMask.type()) {{
+				put(0, 0, 0);
+				put(0, 1, 1);
+				put(0, 2, 0);
+
+				put(1, 0, 0);
+				put(1, 1, 1);
+				put(1, 2, 0);
+
+				put(2, 0, 0);
+				put(2, 1, 1);
+				put(2, 2, 0);
+			}};
+			Mat mmV = markerMask.clone();
+			Imgproc.erode(mmV, mmV, vKernel);
+			Imgproc.dilate(mmV, mmV, vKernel);
+			showImage(mmV, ii, SHAPE_METHOD, "_remove_smaler_V.png");
+			//horisontal
+			Mat hKernel = new Mat(3, 3, markerMask.type()) {{
+				put(0, 0, 0);
+				put(0, 1, 0);
+				put(0, 2, 0);
+
+				put(1, 0, 1);
+				put(1, 1, 1);
+				put(1, 2, 1);
+
+				put(2, 0, 0);
+				put(2, 1, 0);
+				put(2, 2, 0);
+			}};
+			Mat mmH = markerMask.clone();
+			Imgproc.erode(mmH, mmH, hKernel);
+			Imgproc.dilate(mmH, mmH, hKernel);
+			showImage(mmH, ii, SHAPE_METHOD, "_remove_smaler_H.png");
+			//summ
+			Core.add(mmH, mmV, mmH);
+			showImage(mmH, ii, SHAPE_METHOD, "_V+H_smaler.png");
+
+			Mat median = markerMask.clone();
+			Imgproc.medianBlur(median, median, 3);
+			showImage(median, ii, SHAPE_METHOD, "_median_remove_smaler.png");
+			Core.add(median, mmH, median);
+			showImage(median, ii, SHAPE_METHOD, "_V+H+M_remove_smaler.png");
+
 			List<MatOfPoint> contours = new ArrayList<>();
 			MatOfInt4 hierarchy = new MatOfInt4();
 
@@ -251,24 +298,20 @@ public class PictureService {
 				return;
 			}
 
-			int compCount = 0;
 			Mat markers = Mat.zeros(markerMask.size(), CvType.CV_32S);
-			List<Integer> hierarchyList = hierarchy.toList();
-			for (int i = 0; i >= 0; i = hierarchyList.get(i), compCount++) {
-				Imgproc.drawContours(markers, contours, i, Scalar.all(compCount + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
+			for (int i = 0; i < contours.size(); i++) {
+				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), 0, 8, hierarchy, Integer.MAX_VALUE, new Point());
 			}
+			//markerMask.convertTo(markers, CvType.CV_32S);
+			Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
 
-			if (compCount == 0) {
-				log.info("compCount = 0");
-				return;
-			}
+			showImage(markers, ii, SHAPE_METHOD, MARKERS_SHAPE_OUT_NAME_SUFFIX, 10000);
 
 			List<byte[]> colors = new ArrayList<>();
-			for (int i = 0; i < compCount; i++) {
+			for (int i = 0; i < contours.size(); i++) {
 				colors.add(generateBGRColor());
 			}
-
-			showImage(markers, ii, SHAPE_METHOD, MARKERS_SHAPE_OUT_NAME_SUFFIX);
+			byte[] backroundColor = generateBGRColor();
 
 			Imgproc.watershed(src, markers);
 
@@ -276,19 +319,13 @@ public class PictureService {
 			for (int i = 0; i < markers.rows(); i++) {
 				for (int j = 0; j < markers.cols(); j++) {
 					int index = (int) markers.get(i, j)[0];
-					if (index == -1) {
-						wshed.put(i, j, new byte[]{(byte) 255, (byte) 255, (byte) 255});
-					} else if (index <= 0 || index > compCount) {
-						wshed.put(i, j, new byte[]{(byte) 0, (byte) 0, (byte) 0});
-					} else {
+					if (index > 0 && index <= contours.size()) {
 						wshed.put(i, j, colors.get(index - 1));
+					} else {
+						wshed.put(i, j, backroundColor);
 					}
 				}
 			}
-
-			Core.multiply(wshed, new Scalar(0.5), wshed);
-			Core.multiply(srcGray, new Scalar(0.5), srcGray);
-			Core.add(wshed, srcGray, wshed);
 			showImage(wshed, ii, SHAPE_METHOD, RESULT_SHAPE_OUT_NAME_SUFFIX);
 
 		} catch (IOException e) {

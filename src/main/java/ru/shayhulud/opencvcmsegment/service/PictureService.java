@@ -12,6 +12,7 @@ import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
+import ru.shayhulud.opencvcmsegment.exceptions.IncorrectMatBodyLengthException;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.util.DateUtils;
 import ru.shayhulud.opencvcmsegment.util.PixelUtil;
@@ -166,11 +167,12 @@ public class PictureService {
 			Mat dist_8u = new Mat();
 			distance.convertTo(dist_8u, CvType.CV_8U);
 			List<MatOfPoint> contours = new ArrayList<>();
-			//0 to CV_RETR_EXTERNAL, 2 to CV_CHAIN_APPROX_SIMPLE
-			Imgproc.findContours(dist_8u, contours, new MatOfInt4(), 0, 2);
+			MatOfInt4 hierarchy = new MatOfInt4();
+			//https://docs.opencv.org/2.4/modules/imgproc/doc/structural_analysis_and_shape_descriptors.html?highlight=findcontours#findcontours
+			Imgproc.findContours(dist_8u, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
 			Mat markers = Mat.zeros(distance.size(), CvType.CV_32SC1);
 			for (int i = 0; i < contours.size(); i++) {
-				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1);
+				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
 			}
 			Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
 			//Output markers * 10000
@@ -244,50 +246,59 @@ public class PictureService {
 
 			//Removing small parts;
 			//vertical
-			Mat vKernel = new Mat(3, 3, markerMask.type()) {{
-				put(0, 0, 0);
-				put(0, 1, 1);
-				put(0, 2, 0);
-
-				put(1, 0, 0);
-				put(1, 1, 1);
-				put(1, 2, 0);
-
-				put(2, 0, 0);
-				put(2, 1, 1);
-				put(2, 2, 0);
-			}};
+			Mat vKernel = this.create3x3Kernel(markerMask.type(), new int[]{
+				0, 1, 0,
+				0, 1, 0,
+				0, 1, 0});
 			Mat mmV = markerMask.clone();
 			Imgproc.erode(mmV, mmV, vKernel);
 			Imgproc.dilate(mmV, mmV, vKernel);
-			showImage(mmV, ii, SHAPE_METHOD, "_remove_smaler_V.png");
+//			showImage(mmV, ii, SHAPE_METHOD, "_remove_smaler_V.png");
 			//horisontal
-			Mat hKernel = new Mat(3, 3, markerMask.type()) {{
-				put(0, 0, 0);
-				put(0, 1, 0);
-				put(0, 2, 0);
-
-				put(1, 0, 1);
-				put(1, 1, 1);
-				put(1, 2, 1);
-
-				put(2, 0, 0);
-				put(2, 1, 0);
-				put(2, 2, 0);
-			}};
+			Mat hKernel = this.create3x3Kernel(markerMask.type(), new int[]{
+				0, 0, 0,
+				1, 1, 1,
+				0, 0, 0});
 			Mat mmH = markerMask.clone();
 			Imgproc.erode(mmH, mmH, hKernel);
 			Imgproc.dilate(mmH, mmH, hKernel);
-			showImage(mmH, ii, SHAPE_METHOD, "_remove_smaler_H.png");
+//			showImage(mmH, ii, SHAPE_METHOD, "_remove_smaler_H.png");
+			//LVH
+			Mat lvhKernel = this.create3x3Kernel(markerMask.type(), new int[]{
+				1, 0, 0,
+				0, 1, 0,
+				0, 0, 1});
+			Mat mmLVH = markerMask.clone();
+			Imgproc.erode(mmLVH, mmLVH, lvhKernel);
+			Imgproc.dilate(mmLVH, mmLVH, lvhKernel);
+//			showImage(mmLVH, ii, SHAPE_METHOD, "_remove_smaler_LVH.png");
+			Mat rvhKernel = this.create3x3Kernel(markerMask.type(), new int[]{
+				0, 0, 1,
+				0, 1, 0,
+				1, 0, 0});
+			Mat mmRVH = markerMask.clone();
+			Imgproc.erode(mmRVH, mmRVH, rvhKernel);
+			Imgproc.dilate(mmRVH, mmRVH, rvhKernel);
+//			showImage(mmRVH, ii, SHAPE_METHOD, "_remove_smaler_RVH.png");
 			//summ
 			Core.add(mmH, mmV, mmH);
-			showImage(mmH, ii, SHAPE_METHOD, "_V+H_smaler.png");
+//			showImage(mmH, ii, SHAPE_METHOD, "_V+H_smaler.png");
+			Core.add(mmLVH, mmRVH, mmLVH);
+//			showImage(mmLVH, ii, SHAPE_METHOD, "_LVH+RVH_smaler.png");
+			Core.add(mmH, mmLVH, mmH);
+			showImage(mmH, ii, SHAPE_METHOD, "_ALL_smaler.png");
 
-			Mat median = markerMask.clone();
-			Imgproc.medianBlur(median, median, 3);
-			showImage(median, ii, SHAPE_METHOD, "_median_remove_smaler.png");
-			Core.add(median, mmH, median);
-			showImage(median, ii, SHAPE_METHOD, "_V+H+M_remove_smaler.png");
+			Imgproc.dilate(mmH, mmH, Mat.ones(5, 5, markerMask.type()));
+			Imgproc.erode(mmH, mmH, Mat.ones(5, 5, markerMask.type()));
+			showImage(mmH, ii, SHAPE_METHOD, "_open_smaler.png");
+
+			mmH.copyTo(markerMask);
+
+//			Mat median = markerMask.clone();
+//			Imgproc.medianBlur(mmH, mmH, 3);
+//			showImage(mmH, ii, SHAPE_METHOD, "_median_remove_smaler.png");
+//			Core.add(median, mmH, median);
+//			showImage(median, ii, SHAPE_METHOD, "_V+H+M_remove_smaler.png");
 
 			List<MatOfPoint> contours = new ArrayList<>();
 			MatOfInt4 hierarchy = new MatOfInt4();
@@ -300,7 +311,7 @@ public class PictureService {
 
 			Mat markers = Mat.zeros(markerMask.size(), CvType.CV_32S);
 			for (int i = 0; i < contours.size(); i++) {
-				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), 0, 8, hierarchy, Integer.MAX_VALUE, new Point());
+				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), 2, 8, hierarchy, Integer.MAX_VALUE, new Point());
 			}
 			//markerMask.convertTo(markers, CvType.CV_32S);
 			Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
@@ -331,5 +342,31 @@ public class PictureService {
 		} catch (IOException e) {
 			log.error("There is an error with file stream processing", e);
 		}
+	}
+
+	private Mat create3x3Kernel(int type, int[] kernelBody) {
+		if (kernelBody.length != 9) {
+			throw new IncorrectMatBodyLengthException("wrong kernel length");
+		}
+
+		Mat kernel = new Mat(3, 3, type) {{
+			put(0, 0, kernelBody[0]);
+			put(0, 1, kernelBody[1]);
+			put(0, 2, kernelBody[2]);
+
+			put(1, 0, kernelBody[3]);
+			put(1, 1, kernelBody[4]);
+			put(1, 2, kernelBody[5]);
+
+			put(2, 0, kernelBody[6]);
+			put(2, 1, kernelBody[7]);
+			put(2, 2, kernelBody[8]);
+		}};
+
+		return kernel;
+
+		//TODO: check put(0,0,allkernelbody)
+		//ToDO: refactor to loops
+
 	}
 }

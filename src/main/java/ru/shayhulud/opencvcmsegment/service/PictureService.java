@@ -1,5 +1,7 @@
 package ru.shayhulud.opencvcmsegment.service;
 
+import javafx.embed.swing.SwingFXUtils;
+import javafx.scene.image.Image;
 import lombok.extern.slf4j.Slf4j;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
@@ -13,14 +15,18 @@ import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import ru.shayhulud.opencvcmsegment.exceptions.IncorrectMatBodyLengthException;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
+import ru.shayhulud.opencvcmsegment.model.Result;
 import ru.shayhulud.opencvcmsegment.util.DateUtils;
 import ru.shayhulud.opencvcmsegment.util.OutFileNameGenerator;
 import ru.shayhulud.opencvcmsegment.util.PixelUtil;
 
+import java.awt.image.BufferedImage;
+import java.awt.image.DataBufferByte;
 import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 
@@ -37,6 +43,28 @@ public class PictureService {
 
 	private final Random rnd = new Random();
 
+	public Image mat2Image(Mat frame) {
+		try {
+			return SwingFXUtils.toFXImage(matToBufferedImage(frame), null);
+		} catch (Exception e) {
+			System.err.println("Cannot convert the Mat obejct: " + e);
+			return null;
+		}
+	}
+
+	private BufferedImage matToBufferedImage(Mat m) {
+		int type = BufferedImage.TYPE_BYTE_GRAY;
+		if (m.channels() > 1) {
+			type = BufferedImage.TYPE_3BYTE_BGR;
+		}
+		int bufferSize = m.channels() * m.cols() * m.rows();
+		byte[] b = new byte[bufferSize];
+		m.get(0, 0, b); // get all the pixels
+		BufferedImage image = new BufferedImage(m.cols(), m.rows(), type);
+		final byte[] targetPixels = ((DataBufferByte) image.getRaster().getDataBuffer()).getData();
+		System.arraycopy(b, 0, targetPixels, 0, b.length);
+		return image;
+	}
 
 	public ImageInfo readPicture(String picturePath, String outMainFolder, String pictureName) throws IOException {
 
@@ -57,12 +85,14 @@ public class PictureService {
 			throw new IOException();
 		}
 		ii.setMat(src);
+		ii.setResults(new LinkedList<>());
 
-		String outDirName = createOutputFolder(picturePath, outMainFolder);
-		ii.setOutputDirName(outDirName);
+		//String outDirName = createOutputFolder(picturePath, outMainFolder);
+		//ii.setOutputDirName(outDirName);
 		return ii;
 	}
 
+	@Deprecated
 	private String createOutputFolder(String picturePath, String outMainFolder) throws IOException {
 		String folderName = DateUtils.fromUnixFormatted(new Date().getTime());
 		File outputFolder = new File(
@@ -82,7 +112,7 @@ public class PictureService {
 		return dp;
 	}
 
-	private void showImage(Mat out, ImageInfo ii, String method, int step, String stepName) throws IOException {
+	private void saveImage(Mat out, ImageInfo ii, String method, int step, String stepName) throws IOException {
 		String fileName = OutFileNameGenerator.generatePng(method + ii.getImageFileName(), step, stepName);
 		File result = new File(ii.getOutputDirName() + File.separator + fileName);
 		String outputPath = result.getCanonicalPath();
@@ -90,12 +120,12 @@ public class PictureService {
 		log.info("wrote image {}", outputPath);
 	}
 
-	private void showImage(Mat out, ImageInfo ii, String method, int step, String stepName, double multiplier)
+	private void saveImage(Mat out, ImageInfo ii, String method, int step, String stepName, double multiplier)
 		throws IOException {
 
 		Mat multipliedOut = out.clone();
 		Core.multiply(multipliedOut, new Scalar(multiplier), multipliedOut);
-		showImage(multipliedOut, ii, method, step, stepName);
+		saveImage(multipliedOut, ii, method, step, stepName);
 	}
 
 	private byte[] generateBGRColor() {
@@ -105,10 +135,33 @@ public class PictureService {
 		return new byte[]{b, g, r};
 	}
 
-	public void colorAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
+	private Result makeResult(Mat out, int step, String stepName) {
+		Result result = new Result();
+		result.setMat(out);
+		result.setStep(step);
+		result.setStepName(stepName);
+		return result;
+	}
+
+	private void saveResult(Mat out, ImageInfo ii, int step, String stepName) {
+		ii.getResults().add(makeResult(out, step, stepName));
+	}
+
+	private void saveResult(Mat out, ImageInfo ii, int step, String stepName, double multiplier) {
+		Result result = makeResult(out, step, stepName);
+		result.setNeedToMultiply(true);
+		result.setMultiplier(multiplier);
+		ii.getResults().add(result);
+	}
+
+	public ImageInfo colorAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
+
 		try {
 			int step = 0;
+
 			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
+			ii.setMethod(COLOR_METHOD);
+
 			Mat src = ii.getMat().clone();
 
 			for (int x = 0; x < src.rows(); x++) {
@@ -121,7 +174,8 @@ public class PictureService {
 					}
 				}
 			}
-			showImage(src, ii, COLOR_METHOD, ++step, "black_bg");
+			//saveImage(src, ii, COLOR_METHOD, ++step, "black_bg");
+			saveResult(src.clone(), ii, ++step, "black_bg");
 
 			Mat kernel = new MatOfFloat(1f, 1f, 1f, 1f, -8f, 1f, 1f, 1f, 1f);
 			//possibly need to clone from src or zeros of src;
@@ -134,22 +188,26 @@ public class PictureService {
 			imgResult.convertTo(imgResult, CvType.CV_8UC3);
 			imgLaplasian.convertTo(imgLaplasian, CvType.CV_8UC3);
 			imgResult.copyTo(src);
-			showImage(imgResult, ii, COLOR_METHOD, ++step, "laplassian_sharp");
+			//saveImage(imgResult, ii, COLOR_METHOD, ++step, "laplassian_sharp");
+			saveResult(imgResult.clone(), ii, ++step, "laplassian_sharp");
 
 			Mat bw = new Mat();
 			Imgproc.cvtColor(src, bw, Imgproc.COLOR_BGR2GRAY);
 			Imgproc.threshold(bw, bw, 40, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
-			showImage(bw, ii, COLOR_METHOD, ++step, "bw");
+			//saveImage(bw, ii, COLOR_METHOD, ++step, "bw");
+			saveResult(bw.clone(), ii, ++step, "bw");
 
 			Mat distance = new Mat();
 			Imgproc.distanceTransform(bw, distance, Imgproc.CV_DIST_L2, 5);
 			Core.normalize(distance, distance, 0, 1., Core.NORM_MINMAX);
-			showImage(distance, ii, COLOR_METHOD, ++step, "distance_transform", 1000);
+			//saveImage(distance, ii, COLOR_METHOD, ++step, "distance_transform", 1000);
+			saveResult(distance.clone(), ii, ++step, "distance_transform", 1000);
 
 			Imgproc.threshold(distance, distance, .4, 1., Imgproc.THRESH_BINARY);
 			Mat kernel1 = Mat.ones(3, 3, CvType.CV_8UC1);
 			Imgproc.dilate(distance, distance, kernel1);
-			showImage(distance, ii, COLOR_METHOD, ++step, "distance_peaks", 1000);
+			//saveImage(distance, ii, COLOR_METHOD, ++step, "distance_peaks", 1000);
+			saveResult(distance.clone(), ii, ++step, "distance_peaks", 1000);
 
 			Mat dist_8u = new Mat();
 			distance.convertTo(dist_8u, CvType.CV_8U);
@@ -163,7 +221,8 @@ public class PictureService {
 			}
 			Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
 			//Output markers * 10000
-			showImage(markers, ii, COLOR_METHOD, ++step, "markers", 10000d);
+			//saveImage(markers, ii, COLOR_METHOD, ++step, "markers", 10000d);
+			saveResult(markers.clone(), ii, ++step, "markers", 10000);
 
 			Imgproc.watershed(src, markers);
 
@@ -182,42 +241,41 @@ public class PictureService {
 			Mat dst = Mat.zeros(markers.size(), CvType.CV_8UC3);
 			for (int i = 0; i < markers.rows(); i++) {
 				for (int j = 0; j < markers.cols(); j++) {
-					double[] buff = markers.get(i, j);
-					int index = (int) buff[0];
+					int index = (int) markers.get(i, j)[0];
 					if (index > 0 && index <= contours.size()) {
-						byte[] vec3b = new byte[3];
-						PixelUtil.setPixelRGBValue(
-							vec3b,
-							colors.get(index - 1)[0],
-							colors.get(index - 1)[1],
-							colors.get(index - 1)[2]
-						);
-						dst.put(i, j, vec3b);
+						dst.put(i, j, colors.get(index - 1));
 					} else {
 						dst.put(i, j, backroundColor);
 					}
 				}
 			}
-			showImage(dst, ii, COLOR_METHOD, ++step, "result");
+			//saveImage(dst, ii, COLOR_METHOD, ++step, "result");
+			saveResult(dst.clone(), ii, ++step, "result");
 
+			return ii;
 		} catch (IOException e) {
 			log.error("There is an error with file stream processing", e);
 		}
+		return null;
 	}
 
-	public void shapeAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
+	public ImageInfo shapeAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
+
 		try {
 			int step = 0;
-			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
-			Mat src = ii.getMat().clone();
 
+			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
+			ii.setMethod(SHAPE_METHOD);
+
+			Mat src = ii.getMat().clone();
 
 			Mat markerMask = new Mat();
 			Mat srcGray = new Mat();
 			Imgproc.cvtColor(src, markerMask, Imgproc.COLOR_BGR2GRAY);
 			Imgproc.cvtColor(markerMask, srcGray, Imgproc.COLOR_GRAY2BGR);
 			markerMask = Mat.zeros(markerMask.size(), markerMask.type());
-			showImage(srcGray, ii, SHAPE_METHOD, ++step, "grayed");
+			//saveImage(srcGray, ii, SHAPE_METHOD, ++step, "grayed");
+			saveResult(srcGray.clone(), ii, ++step, "grayed");
 
 			//TODO: lowTreshold need to be various;
 			int lowTreshold = 5;
@@ -228,8 +286,10 @@ public class PictureService {
 			Imgproc.Canny(brdGray, brdGray, lowTreshold, lowTreshold * ratio);
 			Mat brdDst = Mat.zeros(src.size(), src.type());
 			src.copyTo(brdDst, brdGray);
-			showImage(brdDst, ii, SHAPE_METHOD, ++step, "borders");
-			showImage(brdGray, ii, SHAPE_METHOD, ++step, "gray_borders");
+			//saveImage(brdDst, ii, SHAPE_METHOD, ++step, "borders");
+			saveResult(brdDst.clone(), ii, ++step, "borders");
+			//saveImage(brdGray, ii, SHAPE_METHOD, ++step, "gray_borders");
+			saveResult(brdGray.clone(), ii, ++step, "gray_borders");
 			brdGray.copyTo(markerMask);
 
 			//TODO: вынести в методы.
@@ -242,7 +302,7 @@ public class PictureService {
 			Mat mmV = markerMask.clone();
 			Imgproc.erode(mmV, mmV, vKernel);
 			Imgproc.dilate(mmV, mmV, vKernel);
-			//horisontal
+			//horizontal
 			Mat hKernel = this.create3x3Kernel(markerMask.type(), new int[]{
 				0, 0, 0,
 				1, 1, 1,
@@ -258,7 +318,7 @@ public class PictureService {
 			Mat mmLVH = markerMask.clone();
 			Imgproc.erode(mmLVH, mmLVH, lvhKernel);
 			Imgproc.dilate(mmLVH, mmLVH, lvhKernel);
-//			showImage(mmLVH, ii, SHAPE_METHOD, "_remove_smaler_LVH.png");
+			//RVH
 			Mat rvhKernel = this.create3x3Kernel(markerMask.type(), new int[]{
 				0, 0, 1,
 				0, 1, 0,
@@ -266,26 +326,26 @@ public class PictureService {
 			Mat mmRVH = markerMask.clone();
 			Imgproc.erode(mmRVH, mmRVH, rvhKernel);
 			Imgproc.dilate(mmRVH, mmRVH, rvhKernel);
-//			showImage(mmRVH, ii, SHAPE_METHOD, "_remove_smaler_RVH.png");
+
 			//summ
 			Core.add(mmH, mmV, mmH);
-//			showImage(mmH, ii, SHAPE_METHOD, "_V+H_smaler.png");
 			Core.add(mmLVH, mmRVH, mmLVH);
-//			showImage(mmLVH, ii, SHAPE_METHOD, "_LVH+RVH_smaler.png");
 			Core.add(mmH, mmLVH, mmH);
-			showImage(mmH, ii, SHAPE_METHOD, ++step, "ALL_smaler.png");
+			//saveImage(mmH, ii, SHAPE_METHOD, ++step, "ALL_smaler");
+			saveResult(mmH.clone(), ii, ++step, "ALL_smaler");
 
 			Imgproc.dilate(mmH, mmH, Mat.ones(5, 5, markerMask.type()));
 			Imgproc.erode(mmH, mmH, Mat.ones(5, 5, markerMask.type()));
-			showImage(mmH, ii, SHAPE_METHOD, ++step, "open_smaler.png");
+			//saveImage(mmH, ii, SHAPE_METHOD, ++step, "open_smaler");
+			saveResult(mmH.clone(), ii, ++step, "open_smaler");
 
 			mmH.copyTo(markerMask);
 
 //			Mat median = markerMask.clone();
 //			Imgproc.medianBlur(mmH, mmH, 3);
-//			showImage(mmH, ii, SHAPE_METHOD, "_median_remove_smaler.png");
+//			saveImage(mmH, ii, SHAPE_METHOD, "_median_remove_smaler.png");
 //			Core.add(median, mmH, median);
-//			showImage(median, ii, SHAPE_METHOD, "_V+H+M_remove_smaler.png");
+//			saveImage(median, ii, SHAPE_METHOD, "_V+H+M_remove_smaler.png");
 
 			List<MatOfPoint> contours = new ArrayList<>();
 			MatOfInt4 hierarchy = new MatOfInt4();
@@ -293,7 +353,7 @@ public class PictureService {
 			Imgproc.findContours(markerMask, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
 			if (contours.isEmpty()) {
 				log.info("contours is empty");
-				return;
+				return null;
 			}
 
 			Mat markers = Mat.zeros(markerMask.size(), CvType.CV_32S);
@@ -304,7 +364,8 @@ public class PictureService {
 			//markerMask.convertTo(markers, CvType.CV_32S);
 			Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
 
-			showImage(markers, ii, SHAPE_METHOD, ++step, "markers", 10000);
+			//saveImage(markers, ii, SHAPE_METHOD, ++step, "markers", 10000);
+			saveResult(markers.clone(), ii, ++step, "markers", 10000);
 
 			List<byte[]> colors = new ArrayList<>();
 			for (int i = 0; i < contours.size(); i++) {
@@ -314,42 +375,31 @@ public class PictureService {
 
 			Imgproc.watershed(src, markers);
 
-			Mat wshed = new Mat(markers.size(), CvType.CV_8UC3);
+			Mat dst = new Mat(markers.size(), CvType.CV_8UC3);
 			for (int i = 0; i < markers.rows(); i++) {
 				for (int j = 0; j < markers.cols(); j++) {
 					int index = (int) markers.get(i, j)[0];
 					if (index > 0 && index <= contours.size()) {
-						wshed.put(i, j, colors.get(index - 1));
+						dst.put(i, j, colors.get(index - 1));
 					} else {
-						wshed.put(i, j, backroundColor);
+						dst.put(i, j, backroundColor);
 					}
 				}
 			}
-			showImage(wshed, ii, SHAPE_METHOD, ++step, "result");
+			//saveImage(dst, ii, SHAPE_METHOD, ++step, "result");
+			saveResult(dst.clone(), ii, ++step, "result");
+			return ii;
 
 		} catch (IOException e) {
 			log.error("There is an error with file stream processing", e);
 		}
+		return null;
 	}
 
 	private Mat create3x3Kernel(int type, int[] kernelBody) {
 		if (kernelBody.length != 9) {
 			throw new IncorrectMatBodyLengthException("wrong kernel length");
 		}
-
-//		Mat kernel = new Mat(3, 3, type) {{
-//			put(0, 0, kernelBody[0]);
-//			put(0, 1, kernelBody[1]);
-//			put(0, 2, kernelBody[2]);
-//
-//			put(1, 0, kernelBody[3]);
-//			put(1, 1, kernelBody[4]);
-//			put(1, 2, kernelBody[5]);
-//
-//			put(2, 0, kernelBody[6]);
-//			put(2, 1, kernelBody[7]);
-//			put(2, 2, kernelBody[8]);
-//		}};
 
 		double[] kernelBodyD = new double[kernelBody.length];
 		for (int i = 0; i < kernelBody.length; i++) {
@@ -358,9 +408,7 @@ public class PictureService {
 
 		Mat kernel = new Mat(3, 3, type, new Scalar(kernelBodyD));
 		return kernel;
-
-		//TODO: check put(0,0,allkernelbody)
-		//ToDO: refactor to loops
+		//ToDO: refactor to loops for custom kernel size
 
 	}
 }

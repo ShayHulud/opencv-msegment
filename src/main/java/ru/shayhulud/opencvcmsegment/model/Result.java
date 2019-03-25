@@ -5,16 +5,15 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.opencv.core.Mat;
 
-import java.util.List;
-
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
-public class ImageInfo {
+public class Result {
 
-	private String method;
-	private String imageFileName;
 	private Mat mat;
-	private String outputDirName;
-	private List<Result> results;
+	private int step;
+	private String stepName;
+
+	private boolean needToMultiply;
+	private Double multiplier;
 }

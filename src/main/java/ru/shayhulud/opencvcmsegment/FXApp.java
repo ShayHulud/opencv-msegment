@@ -6,6 +6,7 @@ import javafx.scene.Scene;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import lombok.extern.slf4j.Slf4j;
@@ -19,12 +20,55 @@ import java.util.List;
 @Slf4j
 public class FXApp extends Application {
 
-	private static Double BORDER = 10D;
 	private static Double FRAME_WIDTH = 720D;
 	private static Double FRAME_HEIGHT = 720D;
 
 	@Override
 	public void start(Stage stage) {
+
+		//----------------------//
+		//----DEFINE LAYOUT-----//
+		//----------------------//
+
+		Group root = new Group();
+		HBox mainPanes = new HBox();
+
+		Scene scene = new Scene(root);
+		scene.setFill(Color.BLACK);
+		stage.setTitle("ImageView");
+		stage.setWidth(FRAME_WIDTH * 2);
+		stage.setHeight(FRAME_HEIGHT);
+
+		VBox inputBox = new VBox();
+		inputBox.setStyle(Styles.BORDER_STYLE);
+
+		VBox outputBox = new VBox();
+		outputBox.setStyle(Styles.BORDER_STYLE);
+
+		ImageView inputImageView = new ImageView();
+		inputImageView.setPreserveRatio(true);
+		inputImageView.setFitWidth(FRAME_WIDTH);
+		inputImageView.setFitHeight(FRAME_HEIGHT);
+
+		ImageView outputImageView = new ImageView();
+		outputImageView.setPreserveRatio(true);
+		outputImageView.setFitWidth(FRAME_WIDTH);
+		outputImageView.setFitHeight(FRAME_HEIGHT);
+
+		//----------------------//
+		//------SET LAYOUT------//
+		//----------------------//
+
+		root.getChildren().add(mainPanes);
+		mainPanes.getChildren().add(inputBox);
+		mainPanes.getChildren().add(outputBox);
+		inputBox.getChildren().add(inputImageView);
+		outputBox.getChildren().add(outputImageView);
+
+
+		//----------------------//
+		//---SET START CONTENT--//
+		//----------------------//
 
 		List<String> params = getParameters().getRaw();
 		PictureService pictureService = new PictureService();
@@ -34,44 +78,17 @@ public class FXApp extends Application {
 			return;
 		}
 
-		// load the image
 		Image inputImage = pictureService.mat2Image(ii.getMat());
-
-		// simple displays ImageView the image as is
-		ImageView inputImageView = new ImageView();
 		inputImageView.setImage(inputImage);
-		inputImageView.setCache(true);
-		inputImageView.setPreserveRatio(true);
-		inputImageView.setFitWidth(FRAME_WIDTH);
-		inputImageView.setFitHeight(FRAME_HEIGHT);
 
+		//TODO сделать выпадающий список.
 		Image outputImage = pictureService.mat2Image(ii.getResults().get(ii.getResults().size() - 1).getMat());
-
-		ImageView outputImageView = new ImageView();
 		outputImageView.setImage(outputImage);
-		outputImageView.setPreserveRatio(true);
-		outputImageView.setFitWidth(FRAME_WIDTH);
-		outputImageView.setFitHeight(FRAME_HEIGHT);
 
-		Group root = new Group();
+		//----------------------//
+		//---------SHOW---------//
+		//----------------------//
 
-		Scene scene = new Scene(root);
-		scene.setFill(Color.BLACK);
-
-		HBox inputBox = new HBox();
-		inputBox.getChildren().add(inputImageView);
-		inputBox.setStyle(Styles.BORDER_STYLE);
-		root.getChildren().add(inputBox);
-
-		HBox outputBox = new HBox();
-		outputBox.getChildren().add(outputImageView);
-		outputBox.setStyle(Styles.BORDER_STYLE);
-		outputBox.setLayoutX(FRAME_WIDTH + BORDER);
-		root.getChildren().add(outputBox);
-
-		stage.setTitle("ImageView");
-		stage.setWidth(FRAME_WIDTH * 2);
-		stage.setHeight(FRAME_HEIGHT);
 		stage.setScene(scene);
 		stage.sizeToScene();
 		stage.show();

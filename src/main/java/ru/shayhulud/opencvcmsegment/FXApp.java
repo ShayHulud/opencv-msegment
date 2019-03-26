@@ -100,17 +100,6 @@ public class FXApp extends Application {
 		ChoiceBox<String> oiDropDownList = new ChoiceBox<>();
 		oiDropDownList.getStyleClass().addAll("select-control");
 
-		ChangeListener<String> changeListener = new ChangeListener<String>() {
-			@Override
-			public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
-				if (newValue != null && !newValue.isEmpty()) {
-					//TODO: Сделать переключение результатов
-				}
-			}
-		};
-		oiDropDownList.getSelectionModel().selectedItemProperty().addListener(changeListener);
-
-
 		HBox oivBox = new HBox();
 		oivBox.getStyleClass().addAll("image-bordered");
 
@@ -118,6 +107,8 @@ public class FXApp extends Application {
 		outputImageView.setPreserveRatio(true);
 		outputImageView.setFitWidth(FRAME_WIDTH);
 		outputImageView.setFitHeight(FRAME_HEIGHT);
+
+		//TODO: сделать кнопки с предобработкой (медианный фильтр там или усиление резкозти)
 
 		//----------------------//
 		//------SET LAYOUT------//
@@ -175,15 +166,30 @@ public class FXApp extends Application {
 								.collect(Collectors.toList())
 						));
 						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
-						outputImageView.setImage(
-							pictureService.mat2Image(
-								CollectionUtil.getLastOf(processedImage.getResults()).getMat()
-							)
-						);
+//						outputImageView.setImage(
+//							pictureService.mat2Image(
+//								CollectionUtil.getLastOf(processedImage.getResults()).getMat()
+//							)
+//						);
 					}
 				}
 			}
 		);
+
+		ChangeListener<String> changeListener = new ChangeListener<String>() {
+			@Override
+			public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
+				if (newValue != null && !newValue.isEmpty()) {
+					processedImage.getResults().stream()
+						.filter(_result -> _result.getStepName().equals(newValue))
+						.findFirst()
+						.ifPresent(_result -> {
+							outputImageView.setImage(pictureService.result2Image(_result));
+						});
+				}
+			}
+		};
+		oiDropDownList.getSelectionModel().selectedItemProperty().addListener(changeListener);
 
 		//----------------------//
 		//---SET START CONTENT--//

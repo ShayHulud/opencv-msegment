@@ -37,6 +37,11 @@ import java.util.Random;
 @Slf4j
 public class PictureService {
 
+//  debug mat
+//	byte[] b = new byte[showConverted.cols() * showConverted.rows() * showConverted.channels()];
+//		showConverted.get(0,0,b);
+//		log.info("", b);
+
 	//TODO: вынести в енум
 	private static final String COLOR_METHOD = "_color";
 	private static final String SHAPE_METHOD = "_shape";
@@ -47,9 +52,22 @@ public class PictureService {
 		try {
 			return SwingFXUtils.toFXImage(matToBufferedImage(frame), null);
 		} catch (Exception e) {
-			System.err.println("Cannot convert the Mat obejct: " + e);
+			log.error("Cannot convert the Mat obejct: ", e);
 			return null;
 		}
+	}
+
+	public Image result2Image(Result result) {
+		//TODO: добавить зависимость от типа входной матрицы
+		if (!result.isNeedToMultiply()) {
+			return mat2Image(result.getMat());
+		}
+		Mat show = result.getMat().clone();
+		//Core.multiply(show, new Scalar(result.getMultiplier()), show);
+		Mat showConverted = new Mat();
+		show.convertTo(show, show.type(), 255, 0);
+		show.convertTo(showConverted, CvType.CV_8U);
+		return mat2Image(showConverted);
 	}
 
 	private BufferedImage matToBufferedImage(Mat m) {
@@ -153,6 +171,7 @@ public class PictureService {
 		result.setMat(out);
 		result.setStep(step);
 		result.setStepName(stepName);
+		//log.info("making result with mat of type {}", out.type());
 		return result;
 	}
 
@@ -176,7 +195,6 @@ public class PictureService {
 			return null;
 		}
 	}
-
 
 	public ImageInfo colorAutoMarkerWatershed(ImageInfo ii) {
 
@@ -276,6 +294,7 @@ public class PictureService {
 		return ii;
 	}
 
+	//TODO; переделать для использования кнопкой.
 	public ImageInfo shapeAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
 
 		try {

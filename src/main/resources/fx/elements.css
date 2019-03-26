@@ -1,0 +1,21 @@
+.image-bordered {
+    -fx-border-color: black;
+    -fx-border-width: 4;
+    -fx-border-style: solid inside;
+}
+
+.label {
+    -fx-font-size: 14;
+    -fx-padding: 5px;
+    -fx-font-weight: bold;
+}
+
+.select-control {
+    -fx-font-size: 14;
+    -fx-margin: 5px;
+}
+
+.separator *.line{
+    -fx-border-style: solid;
+    -fx-border-width: 1px;
+}

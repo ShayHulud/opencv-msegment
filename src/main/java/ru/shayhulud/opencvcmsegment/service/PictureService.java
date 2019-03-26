@@ -68,27 +68,40 @@ public class PictureService {
 
 	public ImageInfo readPicture(String picturePath, String outMainFolder, String pictureName) throws IOException {
 
-		ImageInfo ii = new ImageInfo();
-
 		String pictureFullPath = picturePath + File.separator + pictureName;
 		log.info("pictureFullPath = {}", pictureFullPath);
 
 		//load image content to temp file.
-		File pictureFile = new File(pictureFullPath);
-		log.info("read picture size of: {}", pictureFile.length());
+		File image = new File(pictureFullPath);
 
+		//Convert file to openCV Mat
+		ImageInfo ii = readPicture(image);
+
+		//TODO: make save button
+		//String outDirName = createOutputFolder(picturePath, outMainFolder);
+		//ii.setOutputDirName(outDirName);
+		log.info("read {} file size of: {}; size: {}x{}",
+			image.getName(), image.length(), ii.getMat().cols(), ii.getMat().rows()
+		);
+		return ii;
+	}
+
+	public ImageInfo readPicture(File image) throws IOException {
+		ImageInfo ii = new ImageInfo();
+
+		String pictureName = image.getName();
 		ii.setImageFileName(pictureName);
 
 		//Convert file to openCV Mat
-		Mat src = Imgcodecs.imread(pictureFile.getCanonicalPath());
+		Mat src = Imgcodecs.imread(image.getCanonicalPath());
 		if (src.dataAddr() == 0) {
 			throw new IOException();
 		}
 		ii.setMat(src);
 		ii.setResults(new LinkedList<>());
-
-		//String outDirName = createOutputFolder(picturePath, outMainFolder);
-		//ii.setOutputDirName(outDirName);
+		log.info("read {} file size of: {}; size: {}x{}",
+			image.getName(), image.length(), src.cols(), src.rows()
+		);
 		return ii;
 	}
 
@@ -155,108 +168,112 @@ public class PictureService {
 	}
 
 	public ImageInfo colorAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
-
 		try {
-			int step = 0;
-
 			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
-			ii.setMethod(COLOR_METHOD);
-
-			Mat src = ii.getMat().clone();
-
-			for (int x = 0; x < src.rows(); x++) {
-				for (int y = 0; y < src.cols(); y++) {
-					byte[] vec3b = new byte[3];
-					src.get(x, y, vec3b);
-					if (PixelUtil.checkPixelRGB(vec3b, 255, 255, 255)) {
-						PixelUtil.setPixelRGBValue(vec3b, 0, 0, 0);
-						src.put(x, y, vec3b);
-					}
-				}
-			}
-			//saveImage(src, ii, COLOR_METHOD, ++step, "black_bg");
-			saveResult(src.clone(), ii, ++step, "black_bg");
-
-			Mat kernel = new MatOfFloat(1f, 1f, 1f, 1f, -8f, 1f, 1f, 1f, 1f);
-			//possibly need to clone from src or zeros of src;
-			Mat imgLaplasian = new Mat();
-			Mat sharp = src.clone();
-			Imgproc.filter2D(sharp, imgLaplasian, CvType.CV_32F, kernel);
-			src.convertTo(sharp, CvType.CV_32F);
-			Mat imgResult = new Mat();
-			Core.subtract(sharp, imgLaplasian, imgResult);
-			imgResult.convertTo(imgResult, CvType.CV_8UC3);
-			imgLaplasian.convertTo(imgLaplasian, CvType.CV_8UC3);
-			imgResult.copyTo(src);
-			//saveImage(imgResult, ii, COLOR_METHOD, ++step, "laplassian_sharp");
-			saveResult(imgResult.clone(), ii, ++step, "laplassian_sharp");
-
-			Mat bw = new Mat();
-			Imgproc.cvtColor(src, bw, Imgproc.COLOR_BGR2GRAY);
-			Imgproc.threshold(bw, bw, 40, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
-			//saveImage(bw, ii, COLOR_METHOD, ++step, "bw");
-			saveResult(bw.clone(), ii, ++step, "bw");
-
-			Mat distance = new Mat();
-			Imgproc.distanceTransform(bw, distance, Imgproc.CV_DIST_L2, 5);
-			Core.normalize(distance, distance, 0, 1., Core.NORM_MINMAX);
-			//saveImage(distance, ii, COLOR_METHOD, ++step, "distance_transform", 1000);
-			saveResult(distance.clone(), ii, ++step, "distance_transform", 1000);
-
-			Imgproc.threshold(distance, distance, .4, 1., Imgproc.THRESH_BINARY);
-			Mat kernel1 = Mat.ones(3, 3, CvType.CV_8UC1);
-			Imgproc.dilate(distance, distance, kernel1);
-			//saveImage(distance, ii, COLOR_METHOD, ++step, "distance_peaks", 1000);
-			saveResult(distance.clone(), ii, ++step, "distance_peaks", 1000);
-
-			Mat dist_8u = new Mat();
-			distance.convertTo(dist_8u, CvType.CV_8U);
-			List<MatOfPoint> contours = new ArrayList<>();
-			MatOfInt4 hierarchy = new MatOfInt4();
-			//https://docs.opencv.org/2.4/modules/imgproc/doc/structural_analysis_and_shape_descriptors.html?highlight=findcontours#findcontours
-			Imgproc.findContours(dist_8u, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
-			Mat markers = Mat.zeros(distance.size(), CvType.CV_32SC1);
-			for (int i = 0; i < contours.size(); i++) {
-				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
-			}
-			Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
-			//Output markers * 10000
-			//saveImage(markers, ii, COLOR_METHOD, ++step, "markers", 10000d);
-			saveResult(markers.clone(), ii, ++step, "markers", 10000);
-
-			Imgproc.watershed(src, markers);
-
-			Mat mark = Mat.zeros(markers.size(), CvType.CV_8UC1);
-			markers.convertTo(mark, CvType.CV_8UC1);
-			Core.bitwise_not(mark, mark);
-
-			List<byte[]> colors = new ArrayList<>();
-			for (int i = 0; i < contours.size(); i++) {
-				colors.add(generateBGRColor());
-			}
-
-			//define color for background
-			byte[] backroundColor = generateBGRColor();
-
-			Mat dst = Mat.zeros(markers.size(), CvType.CV_8UC3);
-			for (int i = 0; i < markers.rows(); i++) {
-				for (int j = 0; j < markers.cols(); j++) {
-					int index = (int) markers.get(i, j)[0];
-					if (index > 0 && index <= contours.size()) {
-						dst.put(i, j, colors.get(index - 1));
-					} else {
-						dst.put(i, j, backroundColor);
-					}
-				}
-			}
-			//saveImage(dst, ii, COLOR_METHOD, ++step, "result");
-			saveResult(dst.clone(), ii, ++step, "result");
-
-			return ii;
+			return colorAutoMarkerWatershed(ii);
 		} catch (IOException e) {
 			log.error("There is an error with file stream processing", e);
+			return null;
 		}
-		return null;
+	}
+
+
+	public ImageInfo colorAutoMarkerWatershed(ImageInfo ii) {
+
+		int step = 0;
+		ii.setMethod(COLOR_METHOD);
+
+		Mat src = ii.getMat().clone();
+
+		for (int x = 0; x < src.rows(); x++) {
+			for (int y = 0; y < src.cols(); y++) {
+				byte[] vec3b = new byte[3];
+				src.get(x, y, vec3b);
+				if (PixelUtil.checkPixelRGB(vec3b, 255, 255, 255)) {
+					PixelUtil.setPixelRGBValue(vec3b, 0, 0, 0);
+					src.put(x, y, vec3b);
+				}
+			}
+		}
+		//saveImage(src, ii, COLOR_METHOD, ++step, "black_bg");
+		saveResult(src.clone(), ii, ++step, "black_bg");
+
+		Mat kernel = new MatOfFloat(1f, 1f, 1f, 1f, -8f, 1f, 1f, 1f, 1f);
+		//possibly need to clone from src or zeros of src;
+		Mat imgLaplasian = new Mat();
+		Mat sharp = src.clone();
+		Imgproc.filter2D(sharp, imgLaplasian, CvType.CV_32F, kernel);
+		src.convertTo(sharp, CvType.CV_32F);
+		Mat imgResult = new Mat();
+		Core.subtract(sharp, imgLaplasian, imgResult);
+		imgResult.convertTo(imgResult, CvType.CV_8UC3);
+		imgLaplasian.convertTo(imgLaplasian, CvType.CV_8UC3);
+		imgResult.copyTo(src);
+		//saveImage(imgResult, ii, COLOR_METHOD, ++step, "laplassian_sharp");
+		saveResult(imgResult.clone(), ii, ++step, "laplassian_sharp");
+
+		Mat bw = new Mat();
+		Imgproc.cvtColor(src, bw, Imgproc.COLOR_BGR2GRAY);
+		Imgproc.threshold(bw, bw, 40, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
+		//saveImage(bw, ii, COLOR_METHOD, ++step, "bw");
+		saveResult(bw.clone(), ii, ++step, "bw");
+
+		Mat distance = new Mat();
+		Imgproc.distanceTransform(bw, distance, Imgproc.CV_DIST_L2, 5);
+		Core.normalize(distance, distance, 0, 1., Core.NORM_MINMAX);
+		//saveImage(distance, ii, COLOR_METHOD, ++step, "distance_transform", 1000);
+		saveResult(distance.clone(), ii, ++step, "distance_transform", 1000);
+
+		Imgproc.threshold(distance, distance, .4, 1., Imgproc.THRESH_BINARY);
+		Mat kernel1 = Mat.ones(3, 3, CvType.CV_8UC1);
+		Imgproc.dilate(distance, distance, kernel1);
+		//saveImage(distance, ii, COLOR_METHOD, ++step, "distance_peaks", 1000);
+		saveResult(distance.clone(), ii, ++step, "distance_peaks", 1000);
+
+		Mat dist_8u = new Mat();
+		distance.convertTo(dist_8u, CvType.CV_8U);
+		List<MatOfPoint> contours = new ArrayList<>();
+		MatOfInt4 hierarchy = new MatOfInt4();
+		//https://docs.opencv.org/2.4/modules/imgproc/doc/structural_analysis_and_shape_descriptors.html?highlight=findcontours#findcontours
+		Imgproc.findContours(dist_8u, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
+		Mat markers = Mat.zeros(distance.size(), CvType.CV_32SC1);
+		for (int i = 0; i < contours.size(); i++) {
+			Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
+		}
+		Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
+		//Output markers * 10000
+		//saveImage(markers, ii, COLOR_METHOD, ++step, "markers", 10000d);
+		saveResult(markers.clone(), ii, ++step, "markers", 10000);
+
+		Imgproc.watershed(src, markers);
+
+		Mat mark = Mat.zeros(markers.size(), CvType.CV_8UC1);
+		markers.convertTo(mark, CvType.CV_8UC1);
+		Core.bitwise_not(mark, mark);
+
+		List<byte[]> colors = new ArrayList<>();
+		for (int i = 0; i < contours.size(); i++) {
+			colors.add(generateBGRColor());
+		}
+
+		//define color for background
+		byte[] backroundColor = generateBGRColor();
+
+		Mat dst = Mat.zeros(markers.size(), CvType.CV_8UC3);
+		for (int i = 0; i < markers.rows(); i++) {
+			for (int j = 0; j < markers.cols(); j++) {
+				int index = (int) markers.get(i, j)[0];
+				if (index > 0 && index <= contours.size()) {
+					dst.put(i, j, colors.get(index - 1));
+				} else {
+					dst.put(i, j, backroundColor);
+				}
+			}
+		}
+		//saveImage(dst, ii, COLOR_METHOD, ++step, "result");
+		saveResult(dst.clone(), ii, ++step, "result");
+
+		return ii;
 	}
 
 	public ImageInfo shapeAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {

@@ -14,7 +14,11 @@ import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
 import javafx.scene.image.ImageView;
+import javafx.scene.image.PixelWriter;
+import javafx.scene.image.WritableImage;
+import javafx.scene.input.MouseEvent;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.FileChooser;
@@ -25,6 +29,7 @@ import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.Result;
 import ru.shayhulud.opencvcmsegment.service.PictureService;
 import ru.shayhulud.opencvcmsegment.util.CollectionUtil;
+import ru.shayhulud.opencvcmsegment.util.MathUtil;
 
 import java.io.File;
 import java.io.IOException;
@@ -37,6 +42,7 @@ public class FXApp extends Application {
 	private static Double FRAME_HEIGHT = 720D;
 
 	public ImageInfo processedImage = null;
+	public WritableImage handMarkers;
 
 	@Override
 	public void start(Stage stage) {
@@ -52,7 +58,7 @@ public class FXApp extends Application {
 		//----------------------//
 
 		Group root = new Group();
-		HBox mainPanes = new HBox();
+		VBox mainPanes = new VBox();
 
 		Scene scene = new Scene(root);
 		scene.setFill(Color.BEIGE);
@@ -63,9 +69,13 @@ public class FXApp extends Application {
 
 		stage.setTitle("ImageView");
 
-		//LEFT PANE
+		//MENU
+		HBox menuBox = new HBox();
 
-		VBox inputBox = new VBox();
+		//MENU-LEFT
+		//TODO: сделать кнопки с предобработкой (медианный фильтр там или усиление резкозти)
+		VBox inputMenuBox = new VBox();
+		inputMenuBox.setMinWidth(FRAME_WIDTH);
 
 		HBox imageSelectBox = new HBox();
 		//Label for select picture button
@@ -74,67 +84,117 @@ public class FXApp extends Application {
 		FileChooser fileChooser = new FileChooser();
 		Button iiSelectButton = new Button("browse");
 		iiSelectButton.getStyleClass().addAll("select-control");
+
 		//Separator
-		Separator iiSelectSeparator = new Separator();
-		iiSelectSeparator.setOrientation(Orientation.VERTICAL);
-		iiSelectSeparator.getStyleClass().addAll("separator");
+		Separator iiSelectSeparator_1 = new Separator();
+		iiSelectSeparator_1.setOrientation(Orientation.HORIZONTAL);
+		iiSelectSeparator_1.getStyleClass().addAll("separator");
+
+		//MANAGE
+		//TODO: Сделать настраиваемый радиус ручного маркера
+		HBox manageBox = new HBox();
+		Button resetMarkersButton = new Button("reset markers");
+		resetMarkersButton.getStyleClass().addAll("select-control");
+
+		//Separator
+		Separator iiSelectSeparator_2 = new Separator();
+		iiSelectSeparator_2.setOrientation(Orientation.HORIZONTAL);
+		iiSelectSeparator_2.getStyleClass().addAll("separator");
+
+		//ALGORYTHMS
+		HBox algorythmsSelectBox = new HBox();
 		//Color wshed button
 		Button colorWshedButton = new Button("color wshed");
 		colorWshedButton.getStyleClass().addAll("select-control");
 
-		HBox iivBox = new HBox();
-		iivBox.getStyleClass().addAll("image-bordered");
-
-		ImageView inputImageView = new ImageView();
-		inputImageView.setPreserveRatio(true);
-		inputImageView.setFitWidth(FRAME_WIDTH);
-		inputImageView.setFitHeight(FRAME_HEIGHT);
-		inputImageView.getStyleClass().addAll("image-bordered");
-
-		//RIGHT PANE
-
-		VBox outputBox = new VBox();
+		//MENU-RIGHT
+		VBox outputMenuBox = new VBox();
+		outputMenuBox.setMinWidth(FRAME_WIDTH);
 
 		HBox outputSelectBox = new HBox();
 		Label oiSelectLabel = new Label("Select step:");
 		ChoiceBox<String> oiDropDownList = new ChoiceBox<>();
 		oiDropDownList.getStyleClass().addAll("select-control");
 
-		HBox oivBox = new HBox();
-		oivBox.getStyleClass().addAll("image-bordered");
+		//IMAGES
+		HBox imagesBox = new HBox();
+
+		//LEFT-IMAGES
+		HBox inputImagesBox = new HBox();
+		inputImagesBox.getStyleClass().addAll("image-bordered");
+		Pane iifp = new Pane();
+		//Show input image
+		ImageView inputImageView = new ImageView();
+		inputImageView.setPreserveRatio(true);
+		inputImageView.setFitWidth(FRAME_WIDTH);
+		inputImageView.setFitHeight(FRAME_HEIGHT);
+		//Transparent iview for drawing
+		ImageView markersDrawingImageView = new ImageView();
+		markersDrawingImageView.setPreserveRatio(true);
+		markersDrawingImageView.setFitWidth(FRAME_WIDTH);
+		markersDrawingImageView.setFitHeight(FRAME_HEIGHT);
+
+		//RIGHT-IMAGES
+		HBox outputImagesBox = new HBox();
+		outputImagesBox.getStyleClass().addAll("image-bordered");
 
 		ImageView outputImageView = new ImageView();
 		outputImageView.setPreserveRatio(true);
 		outputImageView.setFitWidth(FRAME_WIDTH);
 		outputImageView.setFitHeight(FRAME_HEIGHT);
 
-		//TODO: сделать кнопки с предобработкой (медианный фильтр там или усиление резкозти)
-
 		//----------------------//
 		//------SET LAYOUT------//
 		//----------------------//
 
 		root.getChildren().add(mainPanes);
-		mainPanes.getChildren().add(inputBox);
-		mainPanes.getChildren().add(outputBox);
-
-		inputBox.getChildren().addAll(imageSelectBox, iivBox);
+		mainPanes.getChildren().addAll(
+			menuBox,
+			imagesBox
+		);
+		//MENU
+		menuBox.getChildren().addAll(
+			inputMenuBox,
+			outputMenuBox
+		);
+		//INPUT MENU
+		inputMenuBox.getChildren().addAll(
+			imageSelectBox,
+			iiSelectSeparator_1,
+			manageBox,
+			iiSelectSeparator_2,
+			algorythmsSelectBox
+		);
 		imageSelectBox.getChildren().addAll(
 			iiSelectLabel,
-			iiSelectButton,
-			iiSelectSeparator,
+			iiSelectButton
+		);
+		manageBox.getChildren().addAll(
+			resetMarkersButton
+		);
+		algorythmsSelectBox.getChildren().addAll(
 			colorWshedButton
 		);
-		iivBox.getChildren().addAll(inputImageView);
-
-		outputBox.getChildren().addAll(outputSelectBox, oivBox);
+		//OUTPUT MENU
+		outputMenuBox.getChildren().addAll(outputSelectBox);
 		outputSelectBox.getChildren().addAll(oiSelectLabel, oiDropDownList);
-		oivBox.getChildren().addAll(outputImageView);
+
+		//IMAGES
+		imagesBox.getChildren().addAll(
+			inputImagesBox,
+			outputImagesBox
+		);
+		//INPUT IMAGES
+		inputImagesBox.getChildren().addAll(iifp);
+		iifp.getChildren().addAll(inputImageView, markersDrawingImageView);
+		//OUTPUT IMAGES
+		outputImagesBox.getChildren().addAll(outputImageView);
 
 		//----------------------//
 		//-----SET HANDLERS-----//
 		//----------------------//
 
+		//OPEN IMAGE
 		iiSelectButton.setOnAction(
 			new EventHandler<ActionEvent>() {
 				@Override
@@ -145,6 +205,9 @@ public class FXApp extends Application {
 						if (file != null) {
 							processedImage = pictureService.readPicture(file);
 							inputImageView.setImage(pictureService.mat2Image(processedImage.getMat()));
+
+							resetHandMarkers(markersDrawingImageView, inputImageView);
+							log.info("new writableImage size is {}x{}", handMarkers.getWidth(), handMarkers.getHeight());
 						}
 					} catch (IOException ex) {
 						log.error("error while open image", ex);
@@ -154,6 +217,7 @@ public class FXApp extends Application {
 			}
 		);
 
+		//COLOR WATERSHED
 		colorWshedButton.setOnAction(
 			new EventHandler<ActionEvent>() {
 				@Override
@@ -166,16 +230,24 @@ public class FXApp extends Application {
 								.collect(Collectors.toList())
 						));
 						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
-//						outputImageView.setImage(
-//							pictureService.mat2Image(
-//								CollectionUtil.getLastOf(processedImage.getResults()).getMat()
-//							)
-//						);
 					}
 				}
 			}
 		);
 
+		//RESET MARKERS
+		resetMarkersButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (processedImage != null) {
+						resetHandMarkers(markersDrawingImageView, inputImageView);
+						log.info("reset writableImage [{}x{}]", handMarkers.getWidth(), handMarkers.getHeight());
+					}
+				}
+			});
+
+		//ONCHANGE RESULTS DROPDOWN LIST
 		ChangeListener<String> changeListener = new ChangeListener<String>() {
 			@Override
 			public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
@@ -185,11 +257,51 @@ public class FXApp extends Application {
 						.findFirst()
 						.ifPresent(_result -> {
 							outputImageView.setImage(pictureService.result2Image(_result));
+							log.info("select result {} named {}", _result.getStep(), _result.getStepName());
 						});
 				}
 			}
 		};
 		oiDropDownList.getSelectionModel().selectedItemProperty().addListener(changeListener);
+
+		inputImageView.setOnMousePressed(new EventHandler<MouseEvent>() {
+			@Override
+			public void handle(MouseEvent me) {
+				double x = me.getX();
+				double y = me.getY();
+				if (x < 0 || x > FRAME_WIDTH || y < 0 || y > FRAME_HEIGHT) {
+					return;
+				}
+				log.debug("clicked on {}x{}", x, y);
+				//TODO: Сделать настраиваемый радиус ручного маркера
+				drawMarkerWithRadius(
+					MathUtil.normalize(x, FRAME_WIDTH, handMarkers.getWidth()).intValue(),
+					MathUtil.normalize(y, FRAME_HEIGHT, handMarkers.getHeight()).intValue(),
+					2,
+					handMarkers,
+					new Color(1, 1, 1, 1)
+				);
+				me.consume();
+			}
+		});
+		inputImageView.setOnMouseDragged(new EventHandler<MouseEvent>() {
+			@Override
+			public void handle(MouseEvent me) {
+				double x = me.getX();
+				double y = me.getY();
+				if (x < 0 || x > FRAME_WIDTH || y < 0 || y > FRAME_HEIGHT) {
+					return;
+				}
+				//TODO: Сделать настраиваемый радиус ручного маркера
+				drawMarkerWithRadius(
+					MathUtil.normalize(x, FRAME_WIDTH, handMarkers.getWidth()).intValue(),
+					MathUtil.normalize(y, FRAME_HEIGHT, handMarkers.getHeight()).intValue(),
+					2,
+					handMarkers,
+					new Color(1, 1, 1, 1)
+				);
+			}
+		});
 
 		//----------------------//
 		//---SET START CONTENT--//
@@ -209,16 +321,38 @@ public class FXApp extends Application {
 		Application.launch(args);
 	}
 
-	private static void configureFileChooser(
-		final FileChooser fileChooser) {
+	private void configureFileChooser(final FileChooser fileChooser) {
 		fileChooser.setTitle("View Pictures");
 		fileChooser.setInitialDirectory(
 			new File(System.getProperty("user.home"))
 		);
 		fileChooser.getExtensionFilters().addAll(
-			new FileChooser.ExtensionFilter("All Images", "*.*"),
 			new FileChooser.ExtensionFilter("JPG", "*.jpg"),
 			new FileChooser.ExtensionFilter("PNG", "*.png")
 		);
+	}
+
+	private void drawMarkerWithRadius(int x, int y, int r, WritableImage image, Color color) {
+		PixelWriter pw = image.getPixelWriter();
+		for (int i = x - r; i <= x + r; i++) {
+			if (i >= 0) {
+				for (int j = y - r; j <= y + r; j++) {
+					if (j >= 0) {
+						pw.setColor(i, j, color);
+					}
+				}
+			}
+		}
+	}
+
+	private void resetHandMarkers(ImageView handMarkersContainer, ImageView sourceContainer) {
+		handMarkersContainer.setFitWidth(sourceContainer.fitWidthProperty().doubleValue());
+		handMarkersContainer.setFitHeight(sourceContainer.fitHeightProperty().doubleValue());
+
+		handMarkers = new WritableImage(
+			(int) sourceContainer.getImage().getWidth(),
+			(int) sourceContainer.getImage().getHeight()
+		);
+		handMarkersContainer.setImage(handMarkers);
 	}
 }

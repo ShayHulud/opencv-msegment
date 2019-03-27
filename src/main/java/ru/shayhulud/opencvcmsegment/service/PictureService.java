@@ -48,6 +48,7 @@ public class PictureService {
 
 	private final Random rnd = new Random();
 
+	//TODO: сделать метод image2Mat
 	public Image mat2Image(Mat frame) {
 		try {
 			return SwingFXUtils.toFXImage(matToBufferedImage(frame), null);
@@ -196,6 +197,7 @@ public class PictureService {
 		}
 	}
 
+	//TODO: Разбить на операции. Или сделать так, чтобы возвращало пачку маркеров, чтобы можно было waterShed'у передать матрицу с маркерами и сорц.
 	public ImageInfo colorAutoMarkerWatershed(ImageInfo ii) {
 
 		int step = 0;

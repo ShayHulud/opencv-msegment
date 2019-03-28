@@ -25,6 +25,7 @@ import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import lombok.extern.slf4j.Slf4j;
 import nu.pattern.OpenCV;
+import org.opencv.core.Mat;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.Result;
 import ru.shayhulud.opencvcmsegment.service.PictureService;
@@ -41,6 +42,7 @@ public class FXApp extends Application {
 	private static Double FRAME_WIDTH = 720D;
 	private static Double FRAME_HEIGHT = 720D;
 
+	public ImageInfo toAlgorythmsImage = null;
 	public ImageInfo processedImage = null;
 	public WritableImage handMarkers;
 
@@ -106,6 +108,9 @@ public class FXApp extends Application {
 		//Color wshed button
 		Button colorWshedButton = new Button("color wshed");
 		colorWshedButton.getStyleClass().addAll("select-control");
+		Button handWshedButton = new Button("hand wshed");
+		handWshedButton.getStyleClass().addAll("select-control");
+
 
 		//MENU-RIGHT
 		VBox outputMenuBox = new VBox();
@@ -173,7 +178,8 @@ public class FXApp extends Application {
 			resetMarkersButton
 		);
 		algorythmsSelectBox.getChildren().addAll(
-			colorWshedButton
+			colorWshedButton,
+			handWshedButton
 		);
 		//OUTPUT MENU
 		outputMenuBox.getChildren().addAll(outputSelectBox);
@@ -204,6 +210,7 @@ public class FXApp extends Application {
 					try {
 						if (file != null) {
 							processedImage = pictureService.readPicture(file);
+							toAlgorythmsImage = processedImage.clone();
 							inputImageView.setImage(pictureService.mat2Image(processedImage.getMat()));
 
 							resetHandMarkers(markersDrawingImageView, inputImageView);
@@ -222,10 +229,32 @@ public class FXApp extends Application {
 			new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent event) {
-					if (processedImage != null) {
-						processedImage = pictureService.colorAutoMarkerWatershed(processedImage);
+					if (processedImage != null && toAlgorythmsImage != null) {
+						toAlgorythmsImage = processedImage.clone();
+						toAlgorythmsImage = pictureService.colorAutoMarkerWatershed(toAlgorythmsImage);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
-							processedImage.getResults().stream()
+							toAlgorythmsImage.getResults().stream()
+								.map(Result::getStepName)
+								.collect(Collectors.toList())
+						));
+						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
+					}
+				}
+			}
+		);
+
+		//HAND WATERSHED
+		handWshedButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
+						Mat handMarkersMat = pictureService.image2Mat(handMarkers);
+						handMarkersMat = pictureService.bwMat(handMarkersMat);
+						toAlgorythmsImage = processedImage.clone();
+						toAlgorythmsImage = pictureService.handMarkerWatershed(toAlgorythmsImage, handMarkersMat);
+						oiDropDownList.setItems(FXCollections.observableArrayList(
+							toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)
 								.collect(Collectors.toList())
 						));
@@ -252,7 +281,7 @@ public class FXApp extends Application {
 			@Override
 			public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
 				if (newValue != null && !newValue.isEmpty()) {
-					processedImage.getResults().stream()
+					toAlgorythmsImage.getResults().stream()
 						.filter(_result -> _result.getStepName().equals(newValue))
 						.findFirst()
 						.ifPresent(_result -> {

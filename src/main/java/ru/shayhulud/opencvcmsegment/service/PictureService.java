@@ -2,6 +2,8 @@ package ru.shayhulud.opencvcmsegment.service;
 
 import javafx.embed.swing.SwingFXUtils;
 import javafx.scene.image.Image;
+import javafx.scene.image.PixelReader;
+import javafx.scene.image.WritablePixelFormat;
 import lombok.extern.slf4j.Slf4j;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
@@ -24,6 +26,7 @@ import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
 import java.io.File;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.LinkedList;
@@ -43,6 +46,7 @@ public class PictureService {
 //		log.info("", b);
 
 	//TODO: вынести в енум
+	private static final String HAND_METHOD = "_hand";
 	private static final String COLOR_METHOD = "_color";
 	private static final String SHAPE_METHOD = "_shape";
 
@@ -83,6 +87,20 @@ public class PictureService {
 		final byte[] targetPixels = ((DataBufferByte) image.getRaster().getDataBuffer()).getData();
 		System.arraycopy(b, 0, targetPixels, 0, b.length);
 		return image;
+	}
+
+	public Mat image2Mat(Image image) {
+		int width = (int) image.getWidth();
+		int height = (int) image.getHeight();
+		byte[] buffer = new byte[width * height * 4];
+
+		PixelReader reader = image.getPixelReader();
+		WritablePixelFormat<ByteBuffer> format = WritablePixelFormat.getByteBgraInstance();
+		reader.getPixels(0, 0, width, height, format, buffer, 0, width * 4);
+
+		Mat mat = new Mat(height, width, CvType.CV_8UC4);
+		mat.put(0, 0, buffer);
+		return mat;
 	}
 
 	public ImageInfo readPicture(String picturePath, String outMainFolder, String pictureName) throws IOException {
@@ -187,6 +205,32 @@ public class PictureService {
 		ii.getResults().add(result);
 	}
 
+	//handMarkers = CV_8U
+	public ImageInfo handMarkerWatershed(ImageInfo ii, Mat handMarkers) {
+		int step = 0;
+		ii.setMethod(HAND_METHOD);
+
+		Mat src = ii.getMat().clone();
+		saveResult(handMarkers, ii, ++step, "hand_markers");
+
+		List<MatOfPoint> contours = new ArrayList<>();
+		MatOfInt4 hierarchy = new MatOfInt4();
+		Imgproc.findContours(handMarkers, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
+		Mat markers = Mat.zeros(handMarkers.size(), CvType.CV_32SC1);
+		for (int i = 0; i < contours.size(); i++) {
+			//TODO: check thickness
+			Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
+		}
+		ii.setDepth(contours.size());
+		saveResult(markers.clone(), ii, ++step, "markers", 10000);
+
+		Mat dst = this.watershed(src, markers, ii.getDepth());
+		//saveImage(dst, ii, COLOR_METHOD, ++step, "result");
+		saveResult(dst.clone(), ii, ++step, "result");
+
+		return ii;
+	}
+
 	public ImageInfo colorAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
 		try {
 			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
@@ -232,9 +276,7 @@ public class PictureService {
 		//saveImage(imgResult, ii, COLOR_METHOD, ++step, "laplassian_sharp");
 		saveResult(imgResult.clone(), ii, ++step, "laplassian_sharp");
 
-		Mat bw = new Mat();
-		Imgproc.cvtColor(src, bw, Imgproc.COLOR_BGR2GRAY);
-		Imgproc.threshold(bw, bw, 40, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
+		Mat bw = this.bwMat(src);
 		//saveImage(bw, ii, COLOR_METHOD, ++step, "bw");
 		saveResult(bw.clone(), ii, ++step, "bw");
 
@@ -260,36 +302,13 @@ public class PictureService {
 		for (int i = 0; i < contours.size(); i++) {
 			Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
 		}
+		ii.setDepth(contours.size());
 		Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
 		//Output markers * 10000
 		//saveImage(markers, ii, COLOR_METHOD, ++step, "markers", 10000d);
 		saveResult(markers.clone(), ii, ++step, "markers", 10000);
 
-		Imgproc.watershed(src, markers);
-
-		Mat mark = Mat.zeros(markers.size(), CvType.CV_8UC1);
-		markers.convertTo(mark, CvType.CV_8UC1);
-		Core.bitwise_not(mark, mark);
-
-		List<byte[]> colors = new ArrayList<>();
-		for (int i = 0; i < contours.size(); i++) {
-			colors.add(generateBGRColor());
-		}
-
-		//define color for background
-		byte[] backroundColor = generateBGRColor();
-
-		Mat dst = Mat.zeros(markers.size(), CvType.CV_8UC3);
-		for (int i = 0; i < markers.rows(); i++) {
-			for (int j = 0; j < markers.cols(); j++) {
-				int index = (int) markers.get(i, j)[0];
-				if (index > 0 && index <= contours.size()) {
-					dst.put(i, j, colors.get(index - 1));
-				} else {
-					dst.put(i, j, backroundColor);
-				}
-			}
-		}
+		Mat dst = this.watershed(src, markers, ii.getDepth());
 		//saveImage(dst, ii, COLOR_METHOD, ++step, "result");
 		saveResult(dst.clone(), ii, ++step, "result");
 
@@ -393,6 +412,7 @@ public class PictureService {
 				log.info("contours is empty");
 				return null;
 			}
+			ii.setDepth(contours.size());
 
 			Mat markers = Mat.zeros(markerMask.size(), CvType.CV_32S);
 			for (int i = 0; i < contours.size(); i++) {
@@ -405,25 +425,7 @@ public class PictureService {
 			//saveImage(markers, ii, SHAPE_METHOD, ++step, "markers", 10000);
 			saveResult(markers.clone(), ii, ++step, "markers", 10000);
 
-			List<byte[]> colors = new ArrayList<>();
-			for (int i = 0; i < contours.size(); i++) {
-				colors.add(generateBGRColor());
-			}
-			byte[] backroundColor = generateBGRColor();
-
-			Imgproc.watershed(src, markers);
-
-			Mat dst = new Mat(markers.size(), CvType.CV_8UC3);
-			for (int i = 0; i < markers.rows(); i++) {
-				for (int j = 0; j < markers.cols(); j++) {
-					int index = (int) markers.get(i, j)[0];
-					if (index > 0 && index <= contours.size()) {
-						dst.put(i, j, colors.get(index - 1));
-					} else {
-						dst.put(i, j, backroundColor);
-					}
-				}
-			}
+			Mat dst = this.watershed(src, markers, ii.getDepth());
 			//saveImage(dst, ii, SHAPE_METHOD, ++step, "result");
 			saveResult(dst.clone(), ii, ++step, "result");
 			return ii;
@@ -432,6 +434,29 @@ public class PictureService {
 			log.error("There is an error with file stream processing", e);
 		}
 		return null;
+	}
+
+	public Mat watershed(Mat src, Mat markers, Integer depth) {
+		Imgproc.watershed(src, markers);
+
+		List<byte[]> colors = new ArrayList<>();
+		for (int i = 0; i < depth; i++) {
+			colors.add(generateBGRColor());
+		}
+		byte[] backgroundColor = generateBGRColor();
+
+		Mat dst = new Mat(markers.size(), CvType.CV_8UC3);
+		for (int i = 0; i < markers.rows(); i++) {
+			for (int j = 0; j < markers.cols(); j++) {
+				int index = (int) markers.get(i, j)[0];
+				if (index > 0 && index <= depth) {
+					dst.put(i, j, colors.get(index - 1));
+				} else {
+					dst.put(i, j, backgroundColor);
+				}
+			}
+		}
+		return dst;
 	}
 
 	private Mat create3x3Kernel(int type, int[] kernelBody) {
@@ -448,5 +473,12 @@ public class PictureService {
 		return kernel;
 		//ToDO: refactor to loops for custom kernel size
 
+	}
+
+	public Mat bwMat(Mat src) {
+		Mat bw = new Mat();
+		Imgproc.cvtColor(src, bw, Imgproc.COLOR_BGR2GRAY);
+		Imgproc.threshold(bw, bw, 40, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
+		return bw;
 	}
 }

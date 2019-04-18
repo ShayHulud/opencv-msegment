@@ -452,11 +452,11 @@ public class PictureService {
 		log.info("srcGray type of: {}; channels: {}", srcGray.type(), srcGray.channels());
 
 		//DETEXT MAX BRIGHTNESS
-		byte maxBrightness = 0;
-		byte minBrightness = 0;
+		int maxBrightness = 0;
+		int minBrightness = 255;
 		for (int i = 0; i < srcGray.rows() - 1; i++) {
 			for (int j = 0; j < srcGray.cols() - 1; j++) {
-				byte brightness = (byte) srcGray.get(i, j)[0];
+				int brightness = (int) srcGray.get(i, j)[0];
 
 				if (brightness > maxBrightness) {
 					maxBrightness = brightness;
@@ -470,12 +470,12 @@ public class PictureService {
 
 		//TODO: Сделать изменяемым
 		//MAKE THRESHOLDS
-		int depth = 3;
+		int depth = 4;
 		LinkedList<Integer> thresholds = new LinkedList<>();
 		for (int i = 1; i < depth; i++) {
-			int threshold = -128 + (255 / depth) * i;
-			threshold = threshold < -128 ? -128 : threshold;
-			threshold = threshold > 127 ? 127 : threshold;
+			int threshold = minBrightness + ((maxBrightness-minBrightness) / depth) * i;
+			threshold = threshold < minBrightness ? minBrightness : threshold;
+			threshold = threshold > maxBrightness ? maxBrightness : threshold;
 			thresholds.add(threshold);
 		}
 		log.info("depth thresholds:{}", thresholds);
@@ -490,17 +490,17 @@ public class PictureService {
 		//ALLOCATE TO LAYERS
 		for (int i = 0; i < srcGray.rows() - 1; i++) {
 			for (int j = 0; j < srcGray.cols() - 1; j++) {
-				byte brightness = (byte) srcGray.get(i, j)[0];
+				short brightness = (short) srcGray.get(i, j)[0];
 
 				int lastThreshold = thresholds.getLast();
 				if (brightness > lastThreshold) {
 					brightMap.get(thresholds.size())
-						.put(i, j, new byte[]{brightness});
+						.put(i, j, new byte[]{(byte)brightness});
 				} else {
 					for (int k = 0; k < thresholds.size(); k++) {
 						int currThreshold = thresholds.get(k);
 						if (brightness <= currThreshold) {
-							brightMap.get(k).put(i, j, new byte[]{brightness});
+							brightMap.get(k).put(i, j, new byte[]{(byte)brightness});
 							break;
 						}
 					}

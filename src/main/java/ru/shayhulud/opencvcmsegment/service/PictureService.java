@@ -29,14 +29,15 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Map;
 import java.util.Random;
 
 /**
  * Picture processing service.
  */
-//TODO: Сделать чтобы методы возвращали каждый свои маркеры, и отдельно метод, который применяет Watershed по маркерам.
 @Slf4j
 public class PictureService {
 
@@ -49,6 +50,7 @@ public class PictureService {
 	private static final String HAND_METHOD = "_hand";
 	private static final String COLOR_METHOD = "_color";
 	private static final String SHAPE_METHOD = "_shape";
+	private static final String BRIGHT_DEPTH_METHOD = "_bright_depth";
 
 	private final Random rnd = new Random();
 
@@ -432,6 +434,86 @@ public class PictureService {
 		Mat dst = this.watershed(src, markers, ii.getDepth());
 		//saveImage(dst, ii, SHAPE_METHOD, ++step, "result");
 		saveResult(dst.clone(), ii, ++step, "result");
+
+		return ii;
+	}
+
+	public ImageInfo brightDepth(ImageInfo ii) {
+		int step = 0;
+		ii.setMethod(BRIGHT_DEPTH_METHOD);
+		Mat src = ii.getMat().clone();
+
+		Mat srcGray = new Mat();
+		Imgproc.cvtColor(src, srcGray, Imgproc.COLOR_BGR2GRAY);
+		srcGray.convertTo(srcGray, CvType.CV_8U);
+		Imgproc.medianBlur(srcGray, srcGray, 5);
+		saveResult(srcGray.clone(), ii, ++step, "blured_by_5x5");
+
+		log.info("srcGray type of: {}; channels: {}", srcGray.type(), srcGray.channels());
+
+		//DETEXT MAX BRIGHTNESS
+		byte maxBrightness = 0;
+		byte minBrightness = 0;
+		for (int i = 0; i < srcGray.rows() - 1; i++) {
+			for (int j = 0; j < srcGray.cols() - 1; j++) {
+				byte brightness = (byte) srcGray.get(i, j)[0];
+
+				if (brightness > maxBrightness) {
+					maxBrightness = brightness;
+				}
+				if (brightness < minBrightness) {
+					minBrightness = brightness;
+				}
+			}
+		}
+		log.info("max brightness: {}; min brightness: {}", maxBrightness, minBrightness);
+
+		//TODO: Сделать изменяемым
+		//MAKE THRESHOLDS
+		int depth = 3;
+		LinkedList<Integer> thresholds = new LinkedList<>();
+		for (int i = 1; i < depth; i++) {
+			int threshold = -128 + (255 / depth) * i;
+			threshold = threshold < -128 ? -128 : threshold;
+			threshold = threshold > 127 ? 127 : threshold;
+			thresholds.add(threshold);
+		}
+		log.info("depth thresholds:{}", thresholds);
+
+		//MAKE LAYERS
+		Map<Integer, Mat> brightMap = new HashMap<Integer, Mat>() {{
+			for (int i = 0; i < depth; i++) {
+				put(i, new Mat(srcGray.size(), srcGray.type()));
+			}
+		}};
+
+		//ALLOCATE TO LAYERS
+		for (int i = 0; i < srcGray.rows() - 1; i++) {
+			for (int j = 0; j < srcGray.cols() - 1; j++) {
+				byte brightness = (byte) srcGray.get(i, j)[0];
+
+				int lastThreshold = thresholds.getLast();
+				if (brightness > lastThreshold) {
+					brightMap.get(thresholds.size())
+						.put(i, j, new byte[]{brightness});
+				} else {
+					for (int k = 0; k < thresholds.size(); k++) {
+						int currThreshold = thresholds.get(k);
+						if (brightness <= currThreshold) {
+							brightMap.get(k).put(i, j, new byte[]{brightness});
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		++step;
+		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
+			Integer _idx = entry.getKey();
+			Mat _mat = entry.getValue();
+			saveResult(_mat.clone(), ii, step, "level_" + _idx + "_of_depth");
+		}
 
 		return ii;
 	}

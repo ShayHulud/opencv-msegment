@@ -110,9 +110,12 @@ public class FXApp extends Application {
 		colorWshedButton.getStyleClass().addAll("select-control");
 		Button handWshedButton = new Button("hand wshed");
 		handWshedButton.getStyleClass().addAll("select-control");
-		Separator vAlgSeparator = new Separator(Orientation.VERTICAL);
+		Separator vAlgSeparator_1 = new Separator(Orientation.VERTICAL);
 		Button shapeWshedButton = new Button("shape wshed");
 		shapeWshedButton.getStyleClass().addAll("select-control");
+		Separator vAlgSeparator_2 = new Separator(Orientation.VERTICAL);
+		Button brightDepthButton = new Button("bright dpth");
+		brightDepthButton.getStyleClass().addAll("select-control");
 
 
 		//MENU-RIGHT
@@ -183,8 +186,10 @@ public class FXApp extends Application {
 		algorythmsSelectBox.getChildren().addAll(
 			colorWshedButton,
 			handWshedButton,
-			vAlgSeparator,
-			shapeWshedButton
+			vAlgSeparator_1,
+			shapeWshedButton,
+			vAlgSeparator_2,
+			brightDepthButton
 		);
 		//OUTPUT MENU
 		outputMenuBox.getChildren().addAll(outputSelectBox);
@@ -276,6 +281,24 @@ public class FXApp extends Application {
 					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
 						toAlgorythmsImage = processedImage.clone();
 						toAlgorythmsImage = pictureService.shapeAutoMarkerWatershed(toAlgorythmsImage);
+						oiDropDownList.setItems(FXCollections.observableArrayList(
+							toAlgorythmsImage.getResults().stream()
+								.map(Result::getStepName)
+								.collect(Collectors.toList())
+						));
+						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
+					}
+				}
+			}
+		);
+
+		brightDepthButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
+						toAlgorythmsImage = processedImage.clone();
+						toAlgorythmsImage = pictureService.brightDepth(toAlgorythmsImage);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
 							toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)

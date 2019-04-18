@@ -315,125 +315,125 @@ public class PictureService {
 		return ii;
 	}
 
-	//TODO; переделать для использования кнопкой.
 	public ImageInfo shapeAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
-
 		try {
-			int step = 0;
-
 			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
-			ii.setMethod(SHAPE_METHOD);
-
-			Mat src = ii.getMat().clone();
-
-			Mat markerMask = new Mat();
-			Mat srcGray = new Mat();
-			Imgproc.cvtColor(src, markerMask, Imgproc.COLOR_BGR2GRAY);
-			Imgproc.cvtColor(markerMask, srcGray, Imgproc.COLOR_GRAY2BGR);
-			markerMask = Mat.zeros(markerMask.size(), markerMask.type());
-			//saveImage(srcGray, ii, SHAPE_METHOD, ++step, "grayed");
-			saveResult(srcGray.clone(), ii, ++step, "grayed");
-
-			//TODO: lowTreshold need to be various;
-			int lowTreshold = 5;
-			int ratio = 10;
-			Mat brdGray = src.clone();
-			Imgproc.cvtColor(src, brdGray, Imgproc.COLOR_BGR2GRAY);
-//			Imgproc.blur(brdGray, brdGray, new Size(5, 5));
-			Imgproc.Canny(brdGray, brdGray, lowTreshold, lowTreshold * ratio);
-			Mat brdDst = Mat.zeros(src.size(), src.type());
-			src.copyTo(brdDst, brdGray);
-			//saveImage(brdDst, ii, SHAPE_METHOD, ++step, "borders");
-			saveResult(brdDst.clone(), ii, ++step, "borders");
-			//saveImage(brdGray, ii, SHAPE_METHOD, ++step, "gray_borders");
-			saveResult(brdGray.clone(), ii, ++step, "gray_borders");
-			brdGray.copyTo(markerMask);
-
-			//TODO: вынести в методы.
-			//Removing small parts;
-			//vertical
-			Mat vKernel = this.create3x3Kernel(markerMask.type(), new int[]{
-				0, 1, 0,
-				0, 1, 0,
-				0, 1, 0});
-			Mat mmV = markerMask.clone();
-			Imgproc.erode(mmV, mmV, vKernel);
-			Imgproc.dilate(mmV, mmV, vKernel);
-			//horizontal
-			Mat hKernel = this.create3x3Kernel(markerMask.type(), new int[]{
-				0, 0, 0,
-				1, 1, 1,
-				0, 0, 0});
-			Mat mmH = markerMask.clone();
-			Imgproc.erode(mmH, mmH, hKernel);
-			Imgproc.dilate(mmH, mmH, hKernel);
-			//LVH
-			Mat lvhKernel = this.create3x3Kernel(markerMask.type(), new int[]{
-				1, 0, 0,
-				0, 1, 0,
-				0, 0, 1});
-			Mat mmLVH = markerMask.clone();
-			Imgproc.erode(mmLVH, mmLVH, lvhKernel);
-			Imgproc.dilate(mmLVH, mmLVH, lvhKernel);
-			//RVH
-			Mat rvhKernel = this.create3x3Kernel(markerMask.type(), new int[]{
-				0, 0, 1,
-				0, 1, 0,
-				1, 0, 0});
-			Mat mmRVH = markerMask.clone();
-			Imgproc.erode(mmRVH, mmRVH, rvhKernel);
-			Imgproc.dilate(mmRVH, mmRVH, rvhKernel);
-
-			//summ
-			Core.add(mmH, mmV, mmH);
-			Core.add(mmLVH, mmRVH, mmLVH);
-			Core.add(mmH, mmLVH, mmH);
-			//saveImage(mmH, ii, SHAPE_METHOD, ++step, "ALL_smaler");
-			saveResult(mmH.clone(), ii, ++step, "ALL_smaler");
-
-			Imgproc.dilate(mmH, mmH, Mat.ones(5, 5, markerMask.type()));
-			Imgproc.erode(mmH, mmH, Mat.ones(5, 5, markerMask.type()));
-			//saveImage(mmH, ii, SHAPE_METHOD, ++step, "open_smaler");
-			saveResult(mmH.clone(), ii, ++step, "open_smaler");
-
-			mmH.copyTo(markerMask);
-
-//			Mat median = markerMask.clone();
-//			Imgproc.medianBlur(mmH, mmH, 3);
-//			saveImage(mmH, ii, SHAPE_METHOD, "_median_remove_smaler.png");
-//			Core.add(median, mmH, median);
-//			saveImage(median, ii, SHAPE_METHOD, "_V+H+M_remove_smaler.png");
-
-			List<MatOfPoint> contours = new ArrayList<>();
-			MatOfInt4 hierarchy = new MatOfInt4();
-
-			Imgproc.findContours(markerMask, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
-			if (contours.isEmpty()) {
-				log.info("contours is empty");
-				return null;
-			}
-			ii.setDepth(contours.size());
-
-			Mat markers = Mat.zeros(markerMask.size(), CvType.CV_32S);
-			for (int i = 0; i < contours.size(); i++) {
-				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), 3, 8, hierarchy, Integer.MAX_VALUE, new Point());
-			}
-			//TODO:Добавить еще одну итерацию с выделением контуров.
-			//markerMask.convertTo(markers, CvType.CV_32S);
-			Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
-
-			//saveImage(markers, ii, SHAPE_METHOD, ++step, "markers", 10000);
-			saveResult(markers.clone(), ii, ++step, "markers", 10000);
-
-			Mat dst = this.watershed(src, markers, ii.getDepth());
-			//saveImage(dst, ii, SHAPE_METHOD, ++step, "result");
-			saveResult(dst.clone(), ii, ++step, "result");
-			return ii;
-
+			return shapeAutoMarkerWatershed(ii);
 		} catch (IOException e) {
 			log.error("There is an error with file stream processing", e);
+			return null;
 		}
-		return null;
+	}
+
+	public ImageInfo shapeAutoMarkerWatershed(ImageInfo ii) {
+
+		int step = 0;
+		ii.setMethod(SHAPE_METHOD);
+
+		Mat src = ii.getMat().clone();
+
+		Mat markerMask = new Mat();
+		Mat srcGray = new Mat();
+		Imgproc.cvtColor(src, markerMask, Imgproc.COLOR_BGR2GRAY);
+		Imgproc.cvtColor(markerMask, srcGray, Imgproc.COLOR_GRAY2BGR);
+		markerMask = Mat.zeros(markerMask.size(), markerMask.type());
+		//saveImage(srcGray, ii, SHAPE_METHOD, ++step, "grayed");
+		saveResult(srcGray.clone(), ii, ++step, "grayed");
+
+		//TODO: lowTreshold need to be various;
+		int lowTreshold = 5;
+		int ratio = 10;
+		Mat brdGray = src.clone();
+		Imgproc.cvtColor(src, brdGray, Imgproc.COLOR_BGR2GRAY);
+//		Imgproc.blur(brdGray, brdGray, new Size(5, 5));
+		Imgproc.Canny(brdGray, brdGray, lowTreshold, lowTreshold * ratio);
+		Mat brdDst = Mat.zeros(src.size(), src.type());
+		src.copyTo(brdDst, brdGray);
+		//saveImage(brdDst, ii, SHAPE_METHOD, ++step, "borders");
+		saveResult(brdDst.clone(), ii, ++step, "borders");
+		//saveImage(brdGray, ii, SHAPE_METHOD, ++step, "gray_borders");
+		saveResult(brdGray.clone(), ii, ++step, "gray_borders");
+		markerMask = brdGray.clone();
+
+		//TODO: вынести в методы.
+		//Removing small parts;
+		//vertical
+		Mat vKernel = this.create3x3Kernel(markerMask.type(), new int[]{
+			0, 1, 0,
+			0, 1, 0,
+			0, 1, 0});
+		Mat mmV = markerMask.clone();
+		Imgproc.erode(mmV, mmV, vKernel);
+		Imgproc.dilate(mmV, mmV, vKernel);
+		//horizontal
+		Mat hKernel = this.create3x3Kernel(markerMask.type(), new int[]{
+			0, 0, 0,
+			1, 1, 1,
+			0, 0, 0});
+		Mat mmH = markerMask.clone();
+		Imgproc.erode(mmH, mmH, hKernel);
+		Imgproc.dilate(mmH, mmH, hKernel);
+		//LVH
+		Mat lvhKernel = this.create3x3Kernel(markerMask.type(), new int[]{
+			1, 0, 0,
+			0, 1, 0,
+			0, 0, 1});
+		Mat mmLVH = markerMask.clone();
+		Imgproc.erode(mmLVH, mmLVH, lvhKernel);
+		Imgproc.dilate(mmLVH, mmLVH, lvhKernel);
+		//RVH
+		Mat rvhKernel = this.create3x3Kernel(markerMask.type(), new int[]{
+			0, 0, 1,
+			0, 1, 0,
+			1, 0, 0});
+		Mat mmRVH = markerMask.clone();
+		Imgproc.erode(mmRVH, mmRVH, rvhKernel);
+		Imgproc.dilate(mmRVH, mmRVH, rvhKernel);
+
+		//summ
+		Core.add(mmH, mmV, mmH);
+		Core.add(mmLVH, mmRVH, mmLVH);
+		Core.add(mmH, mmLVH, mmH);
+		saveResult(mmH.clone(), ii, ++step, "ALL_smaler");
+
+		Imgproc.dilate(mmH, mmH, Mat.ones(5, 5, markerMask.type()));
+		Imgproc.erode(mmH, mmH, Mat.ones(5, 5, markerMask.type()));
+		saveResult(mmH.clone(), ii, ++step, "open_smaler");
+
+		mmH.copyTo(markerMask);
+
+		Mat median = markerMask.clone();
+		Imgproc.medianBlur(mmH, mmH, 3);
+		saveResult(mmH.clone(), ii, ++step, "median_remove_smaler");
+		Core.add(median, mmH, median);
+		saveResult(median.clone(), ii, ++step, "V+H+M_remove_smaler");
+
+		List<MatOfPoint> contours = new ArrayList<>();
+		MatOfInt4 hierarchy = new MatOfInt4();
+
+		Imgproc.findContours(markerMask, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
+		if (contours.isEmpty()) {
+			log.info("contours is empty");
+			return null;
+		}
+		ii.setDepth(contours.size());
+
+		Mat markers = Mat.zeros(markerMask.size(), CvType.CV_32S);
+		for (int i = 0; i < contours.size(); i++) {
+			Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), 3, 8, hierarchy, Integer.MAX_VALUE, new Point());
+		}
+		//TODO:Добавить еще одну итерацию с выделением контуров.
+		//markerMask.convertTo(markers, CvType.CV_32S);
+		Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
+
+		//saveImage(markers, ii, SHAPE_METHOD, ++step, "markers", 10000);
+		saveResult(markers.clone(), ii, ++step, "markers", 10000);
+
+		Mat dst = this.watershed(src, markers, ii.getDepth());
+		//saveImage(dst, ii, SHAPE_METHOD, ++step, "result");
+		saveResult(dst.clone(), ii, ++step, "result");
+
+		return ii;
 	}
 
 	public Mat watershed(Mat src, Mat markers, Integer depth) {

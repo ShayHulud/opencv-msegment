@@ -110,6 +110,9 @@ public class FXApp extends Application {
 		colorWshedButton.getStyleClass().addAll("select-control");
 		Button handWshedButton = new Button("hand wshed");
 		handWshedButton.getStyleClass().addAll("select-control");
+		Separator vAlgSeparator = new Separator(Orientation.VERTICAL);
+		Button shapeWshedButton = new Button("shape wshed");
+		shapeWshedButton.getStyleClass().addAll("select-control");
 
 
 		//MENU-RIGHT
@@ -179,7 +182,9 @@ public class FXApp extends Application {
 		);
 		algorythmsSelectBox.getChildren().addAll(
 			colorWshedButton,
-			handWshedButton
+			handWshedButton,
+			vAlgSeparator,
+			shapeWshedButton
 		);
 		//OUTPUT MENU
 		outputMenuBox.getChildren().addAll(outputSelectBox);
@@ -253,6 +258,24 @@ public class FXApp extends Application {
 						handMarkersMat = pictureService.bwMat(handMarkersMat);
 						toAlgorythmsImage = processedImage.clone();
 						toAlgorythmsImage = pictureService.handMarkerWatershed(toAlgorythmsImage, handMarkersMat);
+						oiDropDownList.setItems(FXCollections.observableArrayList(
+							toAlgorythmsImage.getResults().stream()
+								.map(Result::getStepName)
+								.collect(Collectors.toList())
+						));
+						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
+					}
+				}
+			}
+		);
+
+		shapeWshedButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
+						toAlgorythmsImage = processedImage.clone();
+						toAlgorythmsImage = pictureService.shapeAutoMarkerWatershed(toAlgorythmsImage);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
 							toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)

@@ -220,7 +220,6 @@ public class PictureService {
 		Imgproc.findContours(handMarkers, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
 		Mat markers = Mat.zeros(handMarkers.size(), CvType.CV_32SC1);
 		for (int i = 0; i < contours.size(); i++) {
-			//TODO: check thickness
 			Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
 		}
 		ii.setDepth(contours.size());
@@ -446,8 +445,9 @@ public class PictureService {
 		Mat srcGray = new Mat();
 		Imgproc.cvtColor(src, srcGray, Imgproc.COLOR_BGR2GRAY);
 		srcGray.convertTo(srcGray, CvType.CV_8U);
-		Imgproc.medianBlur(srcGray, srcGray, 5);
-		saveResult(srcGray.clone(), ii, ++step, "blured_by_5x5");
+		Integer medianmaskBlurSize = this.calculateSizeOfSquareBlurMask(srcGray);
+		Imgproc.medianBlur(srcGray, srcGray, medianmaskBlurSize);
+		saveResult(srcGray.clone(), ii, ++step, "blured_by_" + medianmaskBlurSize + "x" + medianmaskBlurSize);
 
 		log.info("srcGray type of: {}; channels: {}", srcGray.type(), srcGray.channels());
 
@@ -473,7 +473,7 @@ public class PictureService {
 		int depth = 4;
 		LinkedList<Integer> thresholds = new LinkedList<>();
 		for (int i = 1; i < depth; i++) {
-			int threshold = minBrightness + ((maxBrightness-minBrightness) / depth) * i;
+			int threshold = minBrightness + ((maxBrightness - minBrightness) / depth) * i;
 			threshold = threshold < minBrightness ? minBrightness : threshold;
 			threshold = threshold > maxBrightness ? maxBrightness : threshold;
 			thresholds.add(threshold);
@@ -495,12 +495,12 @@ public class PictureService {
 				int lastThreshold = thresholds.getLast();
 				if (brightness > lastThreshold) {
 					brightMap.get(thresholds.size())
-						.put(i, j, new byte[]{(byte)brightness});
+						.put(i, j, new byte[]{(byte) brightness});
 				} else {
 					for (int k = 0; k < thresholds.size(); k++) {
 						int currThreshold = thresholds.get(k);
 						if (brightness <= currThreshold) {
-							brightMap.get(k).put(i, j, new byte[]{(byte)brightness});
+							brightMap.get(k).put(i, j, new byte[]{(byte) brightness});
 							break;
 						}
 					}
@@ -515,7 +515,80 @@ public class PictureService {
 			saveResult(_mat.clone(), ii, step, "level_" + _idx + "_of_depth");
 		}
 
+		++step;
+		Integer openMaskSize = this.calculateSizeOfSquareBlurMask(src);
+		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
+			Integer _idx = entry.getKey();
+			Mat _mat = entry.getValue();
+			Imgproc.erode(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
+			Imgproc.dilate(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
+			saveResult(_mat.clone(), ii, step, "open_of_level_" + _idx + "_of_depth");
+		}
+
+		//WSHED
+		++step;
+		Mat wshedMarkSumm = new Mat(src.size(), srcGray.type());
+		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
+			Integer _idx = entry.getKey();
+			Mat _mat = entry.getValue();
+
+			List<MatOfPoint> contours = new ArrayList<>();
+			MatOfInt4 hierarchy = new MatOfInt4();
+			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
+
+			Mat markers = Mat.zeros(_mat.size(), CvType.CV_32S);
+			for (int i = 0; i < contours.size(); i++) {
+				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
+			}
+			saveResult(markers.clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 10000);
+
+			Mat _eroded = Mat.zeros(wshedMarkSumm.size(), wshedMarkSumm.type());
+			markers.convertTo(_eroded, _eroded.type());
+			Imgproc.erode(_eroded, _eroded, Mat.ones(3, 3, markers.type()));
+			Core.add(wshedMarkSumm, _eroded, wshedMarkSumm);
+
+
+			Mat dst = this.watershed(src, markers, contours.size());
+			saveResult(dst.clone(), ii, step, "result_of_level_" + _idx + "_of_depth");
+		}
+
+		saveResult(wshedMarkSumm.clone(), ii, ++step, "markers_summ_eroded_markers", 10000);
+
+		List<MatOfPoint> contours = new ArrayList<>();
+		MatOfInt4 hierarchy = new MatOfInt4();
+		Imgproc.findContours(wshedMarkSumm, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
+		wshedMarkSumm.convertTo(wshedMarkSumm, CvType.CV_32S);
+		Mat dst = this.watershed(src, wshedMarkSumm, contours.size());
+		saveResult(dst.clone(), ii, ++step, "result_summ_eroded_markers");
+
+		//GRABCUT
+		//TODO: make grabcut
+
 		return ii;
+	}
+
+	public Integer calculateSizeOfSquareBlurMask(Mat src) {
+		int minOfSrcSize = src.cols() <= src.rows() ? src.cols() : src.rows();
+		int minMaskSize = 3;
+		double scale;
+		if (minOfSrcSize < minMaskSize) {
+			return 1;
+		} else if (minOfSrcSize <= 100) {
+			return 5;
+		} else if (minOfSrcSize <= 360) {
+			scale = 0.025;
+		} else if (minOfSrcSize <= 480) {
+			scale = 0.02;
+		} else if (minOfSrcSize <= 720) {
+			scale = 0.015;
+		} else if (minOfSrcSize <= 1080) {
+			scale = 0.01;
+		} else {
+			scale = 0.005;
+		}
+		int result = Double.valueOf(minOfSrcSize * scale).intValue();
+		result = result % 2 == 0 ? result + 1 : result;
+		return result;
 	}
 
 	public Mat watershed(Mat src, Mat markers, Integer depth) {

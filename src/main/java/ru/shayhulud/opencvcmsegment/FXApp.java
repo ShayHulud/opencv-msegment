@@ -13,6 +13,7 @@ import javafx.scene.control.Button;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
+import javafx.scene.control.TextField;
 import javafx.scene.image.ImageView;
 import javafx.scene.image.PixelWriter;
 import javafx.scene.image.WritableImage;
@@ -116,6 +117,9 @@ public class FXApp extends Application {
 		Separator vAlgSeparator_2 = new Separator(Orientation.VERTICAL);
 		Button brightDepthButton = new Button("bright dpth");
 		brightDepthButton.getStyleClass().addAll("select-control");
+		TextField depthCountInput = new TextField();
+		depthCountInput.setPromptText("1");
+		depthCountInput.getStyleClass().addAll("select-control");
 
 
 		//MENU-RIGHT
@@ -189,7 +193,8 @@ public class FXApp extends Application {
 			vAlgSeparator_1,
 			shapeWshedButton,
 			vAlgSeparator_2,
-			brightDepthButton
+			brightDepthButton,
+			depthCountInput
 		);
 		//OUTPUT MENU
 		outputMenuBox.getChildren().addAll(outputSelectBox);
@@ -215,7 +220,6 @@ public class FXApp extends Application {
 			new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(final ActionEvent event) {
-					configureFileChooser(fileChooser);
 					File file = fileChooser.showOpenDialog(stage);
 					try {
 						if (file != null) {
@@ -298,7 +302,10 @@ public class FXApp extends Application {
 				public void handle(ActionEvent event) {
 					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
 						toAlgorythmsImage = processedImage.clone();
-						toAlgorythmsImage = pictureService.brightDepth(toAlgorythmsImage);
+						toAlgorythmsImage = pictureService.brightDepth(
+							toAlgorythmsImage,
+							Integer.parseInt(depthCountInput.getText())
+						);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
 							toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)
@@ -378,9 +385,33 @@ public class FXApp extends Application {
 			}
 		});
 
+		// force the field to be numeric only
+		depthCountInput.textProperty().addListener(new ChangeListener<String>() {
+			@Override
+			public void changed(ObservableValue<? extends String> observable, String oldValue,
+			                    String newValue) {
+				if (!newValue.matches("\\d*")) {
+					newValue = newValue.replaceAll("[^\\d]", "");
+				}
+				if (newValue.equals("")) {
+					depthCountInput.setText(newValue);
+					return;
+				}
+				int newIntValue = Integer.parseInt(newValue);
+				if (newIntValue < 1) {
+					newIntValue = 1;
+					newValue = Integer.toString(newIntValue);
+				}
+				depthCountInput.setText(newValue);
+			}
+		});
+
 		//----------------------//
 		//---SET START CONTENT--//
 		//----------------------//
+
+		configureFileChooser(fileChooser);
+		depthCountInput.setText(Integer.toString(4));
 
 		//----------------------//
 		//---------SHOW---------//
@@ -401,6 +432,7 @@ public class FXApp extends Application {
 		fileChooser.setInitialDirectory(
 			new File(System.getProperty("user.home"))
 		);
+		fileChooser.getExtensionFilters().clear();
 		fileChooser.getExtensionFilters().addAll(
 			new FileChooser.ExtensionFilter("JPG", "*.jpg"),
 			new FileChooser.ExtensionFilter("PNG", "*.png")

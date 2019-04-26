@@ -437,7 +437,7 @@ public class PictureService {
 		return ii;
 	}
 
-	public ImageInfo brightDepth(ImageInfo ii) {
+	public ImageInfo brightDepth(ImageInfo ii, Integer depth) {
 		int step = 0;
 		ii.setMethod(BRIGHT_DEPTH_METHOD);
 		Mat src = ii.getMat().clone();
@@ -470,7 +470,6 @@ public class PictureService {
 
 		//TODO: Сделать изменяемым
 		//MAKE THRESHOLDS
-		int depth = 4;
 		LinkedList<Integer> thresholds = new LinkedList<>();
 		for (int i = 1; i < depth; i++) {
 			int threshold = minBrightness + ((maxBrightness - minBrightness) / depth) * i;
@@ -526,6 +525,8 @@ public class PictureService {
 		}
 
 		//WSHED
+		//TODO: Сортировать карты маркеров перед склейкой по количеству пикселей в маркерах (DESC)
+		//TODO: Подумать, как сделать так, чтобы внешние рамочные маркеры складывались "Вниз" при склейке
 		++step;
 		Mat wshedMarkSumm = new Mat(src.size(), srcGray.type());
 		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
@@ -534,8 +535,10 @@ public class PictureService {
 
 			List<MatOfPoint> contours = new ArrayList<>();
 			MatOfInt4 hierarchy = new MatOfInt4();
-			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
+			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_NONE);
 
+			//Можно попробовать отрисовывать каждый маркер на своей матрице, складывать вообще со всех слоей их в один списко и потом сортировать по размеру по убыванию и склеивать.
+			//При таком разбиении можно будет даже нормально строить ректанглы вокруг штук для грабката
 			Mat markers = Mat.zeros(_mat.size(), CvType.CV_32S);
 			for (int i = 0; i < contours.size(); i++) {
 				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
@@ -563,6 +566,7 @@ public class PictureService {
 
 		//GRABCUT
 		//TODO: make grabcut
+		//TODO: Найти, как стоить rectangles вокруг маркеров, и как не уйти в рекурсию при маркере ввиде рамки по контуру изображения.
 
 		return ii;
 	}

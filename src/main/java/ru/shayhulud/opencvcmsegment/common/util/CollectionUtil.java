@@ -1,4 +1,4 @@
-package ru.shayhulud.opencvcmsegment.util;
+package ru.shayhulud.opencvcmsegment.common.util;
 
 import java.util.List;
 

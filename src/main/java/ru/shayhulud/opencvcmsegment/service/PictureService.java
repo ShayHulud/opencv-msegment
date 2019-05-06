@@ -15,12 +15,14 @@ import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
+import ru.shayhulud.opencvcmsegment.common.behavior.CONSOLE;
+import ru.shayhulud.opencvcmsegment.common.behavior.GUI;
+import ru.shayhulud.opencvcmsegment.common.util.OutFileNameGenerator;
+import ru.shayhulud.opencvcmsegment.common.util.PixelUtil;
 import ru.shayhulud.opencvcmsegment.exceptions.IncorrectMatBodyLengthException;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.Result;
-import ru.shayhulud.opencvcmsegment.util.DateUtils;
-import ru.shayhulud.opencvcmsegment.util.OutFileNameGenerator;
-import ru.shayhulud.opencvcmsegment.util.PixelUtil;
+import ru.shayhulud.opencvcmsegment.model.dic.SegMethod;
 
 import java.awt.image.BufferedImage;
 import java.awt.image.DataBufferByte;
@@ -28,7 +30,6 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -45,12 +46,6 @@ public class PictureService {
 //	byte[] b = new byte[showConverted.cols() * showConverted.rows() * showConverted.channels()];
 //		showConverted.get(0,0,b);
 //		log.info("", b);
-
-	//TODO: вынести в енум
-	private static final String HAND_METHOD = "_hand";
-	private static final String COLOR_METHOD = "_color";
-	private static final String SHAPE_METHOD = "_shape";
-	private static final String BRIGHT_DEPTH_METHOD = "_bright_depth";
 
 	private final Random rnd = new Random();
 
@@ -105,6 +100,7 @@ public class PictureService {
 		return mat;
 	}
 
+	@CONSOLE
 	public ImageInfo readPicture(String picturePath, String outMainFolder, String pictureName) throws IOException {
 
 		String pictureFullPath = picturePath + File.separator + pictureName;
@@ -125,33 +121,32 @@ public class PictureService {
 		return ii;
 	}
 
+	@GUI
 	public ImageInfo readPicture(File image) throws IOException {
 		ImageInfo ii = new ImageInfo();
 
 		String pictureName = image.getName();
-		ii.setImageFileName(pictureName);
+		ii.setImageFullFileName(pictureName);
 
 		//Convert file to openCV Mat
-		Mat src = Imgcodecs.imread(image.getCanonicalPath());
+		String imageCanonPath = image.getCanonicalPath();
+		Mat src = Imgcodecs.imread(imageCanonPath);
 		if (src.dataAddr() == 0) {
 			throw new IOException();
 		}
 		ii.setMat(src);
 		ii.setResults(new LinkedList<>());
+		ii.setImageDir(image.getParent());
+		ii.setImageFileName(pictureName.split("\\.")[0]);
+		ii.setOutputDirName(ii.getImageFileName() + "_output");
 		log.info("read {} file size of: {}; size: {}x{}",
 			image.getName(), image.length(), src.cols(), src.rows()
 		);
 		return ii;
 	}
 
-	@Deprecated
-	private String createOutputFolder(String picturePath, String outMainFolder) throws IOException {
-		String folderName = DateUtils.fromUnixFormatted(new Date().getTime());
-		File outputFolder = new File(
-			picturePath + File.separator +
-				outMainFolder + File.separator +
-				folderName
-		);
+	private String createOutputFolder(String outputDirPath) throws IOException {
+		File outputFolder = new File(outputDirPath);
 		String dp = outputFolder.getCanonicalPath();
 		if (!outputFolder.isDirectory()) {
 			boolean created = outputFolder.mkdirs();
@@ -164,6 +159,7 @@ public class PictureService {
 		return dp;
 	}
 
+	@CONSOLE
 	private void saveImage(Mat out, ImageInfo ii, String method, int step, String stepName) throws IOException {
 		String fileName = OutFileNameGenerator.generatePng(method + ii.getImageFileName(), step, stepName);
 		File result = new File(ii.getOutputDirName() + File.separator + fileName);
@@ -172,12 +168,44 @@ public class PictureService {
 		log.info("wrote image {}", outputPath);
 	}
 
+	@CONSOLE
 	private void saveImage(Mat out, ImageInfo ii, String method, int step, String stepName, double multiplier)
 		throws IOException {
 
 		Mat multipliedOut = out.clone();
 		Core.multiply(multipliedOut, new Scalar(multiplier), multipliedOut);
 		saveImage(multipliedOut, ii, method, step, stepName);
+	}
+
+	@GUI
+	public void saveResultsToFS(ImageInfo ii) {
+		String outputDir = "";
+		try {
+			outputDir = createOutputFolder(ii.getOutputDirPath());
+		} catch (IOException e) {
+			log.error("Error during create outputDir: ", e);
+			return;
+		}
+		for (Result result : ii.getResults()) {
+			try {
+				Mat toSave = result.getMat().clone();
+				if (result.isNeedToMultiply()) {
+					Core.multiply(toSave, new Scalar(result.getMultiplier()), toSave);
+				}
+				String fileName = OutFileNameGenerator.generatePng(
+					ii.getMethod() + "_" + ii.getImageFileName(),
+					result.getStep(),
+					result.getStepName()
+				);
+				File resultFile = new File(outputDir + File.separator + fileName);
+				String outputPath = resultFile.getCanonicalPath();
+				Imgcodecs.imwrite(outputPath, toSave);
+				log.info("wrote image {}", outputPath);
+			} catch (IOException e) {
+				log.error("Error saving result {}", result.getStepName(), e);
+				continue;
+			}
+		}
 	}
 
 	private byte[] generateBGRColor() {
@@ -208,9 +236,10 @@ public class PictureService {
 	}
 
 	//handMarkers = CV_8U
+	@GUI
 	public ImageInfo handMarkerWatershed(ImageInfo ii, Mat handMarkers) {
 		int step = 0;
-		ii.setMethod(HAND_METHOD);
+		ii.setMethod(SegMethod.HAND_METHOD);
 
 		Mat src = ii.getMat().clone();
 		saveResult(handMarkers, ii, ++step, "hand_markers");
@@ -232,6 +261,7 @@ public class PictureService {
 		return ii;
 	}
 
+	@CONSOLE
 	public ImageInfo colorAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
 		try {
 			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
@@ -246,7 +276,7 @@ public class PictureService {
 	public ImageInfo colorAutoMarkerWatershed(ImageInfo ii) {
 
 		int step = 0;
-		ii.setMethod(COLOR_METHOD);
+		ii.setMethod(SegMethod.COLOR_METHOD);
 
 		Mat src = ii.getMat().clone();
 
@@ -329,7 +359,7 @@ public class PictureService {
 	public ImageInfo shapeAutoMarkerWatershed(ImageInfo ii) {
 
 		int step = 0;
-		ii.setMethod(SHAPE_METHOD);
+		ii.setMethod(SegMethod.SHAPE_METHOD);
 
 		Mat src = ii.getMat().clone();
 
@@ -437,9 +467,10 @@ public class PictureService {
 		return ii;
 	}
 
+	//TODO: опциональная предобработка.
 	public ImageInfo brightDepth(ImageInfo ii, Integer depth) {
 		int step = 0;
-		ii.setMethod(BRIGHT_DEPTH_METHOD);
+		ii.setMethod(SegMethod.BRIGHT_DEPTH_METHOD);
 		Mat src = ii.getMat().clone();
 
 		Mat srcGray = new Mat();
@@ -451,7 +482,7 @@ public class PictureService {
 
 		log.info("srcGray type of: {}; channels: {}", srcGray.type(), srcGray.channels());
 
-		//DETEXT MAX BRIGHTNESS
+		//DETECT MAX BRIGHTNESS
 		int maxBrightness = 0;
 		int minBrightness = 255;
 		for (int i = 0; i < srcGray.rows() - 1; i++) {
@@ -567,6 +598,14 @@ public class PictureService {
 		//GRABCUT
 		//TODO: make grabcut
 		//TODO: Найти, как стоить rectangles вокруг маркеров, и как не уйти в рекурсию при маркере ввиде рамки по контуру изображения.
+
+		return ii;
+	}
+
+	public ImageInfo notConnectedMarkers(ImageInfo ii, Integer depth) {
+		int step = 0;
+		ii.setMethod(SegMethod.NOT_CONNECTED_MARKERS);
+		Mat src = ii.getMat().clone();
 
 		return ii;
 	}

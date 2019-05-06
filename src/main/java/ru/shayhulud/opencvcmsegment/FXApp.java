@@ -27,11 +27,11 @@ import javafx.stage.Stage;
 import lombok.extern.slf4j.Slf4j;
 import nu.pattern.OpenCV;
 import org.opencv.core.Mat;
+import ru.shayhulud.opencvcmsegment.common.util.CollectionUtil;
+import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.Result;
 import ru.shayhulud.opencvcmsegment.service.PictureService;
-import ru.shayhulud.opencvcmsegment.util.CollectionUtil;
-import ru.shayhulud.opencvcmsegment.util.MathUtil;
 
 import java.io.File;
 import java.io.IOException;
@@ -126,10 +126,14 @@ public class FXApp extends Application {
 		VBox outputMenuBox = new VBox();
 		outputMenuBox.setMinWidth(FRAME_WIDTH);
 
+		//TODO: Кнопки перелистывания результатов
 		HBox outputSelectBox = new HBox();
 		Label oiSelectLabel = new Label("Select step:");
 		ChoiceBox<String> oiDropDownList = new ChoiceBox<>();
 		oiDropDownList.getStyleClass().addAll("select-control");
+		Separator vResultsSeparator_1 = new Separator(Orientation.VERTICAL);
+		Button saveResultsButton = new Button("Save");
+		saveResultsButton.getStyleClass().addAll("select-control");
 
 		//IMAGES
 		HBox imagesBox = new HBox();
@@ -198,7 +202,12 @@ public class FXApp extends Application {
 		);
 		//OUTPUT MENU
 		outputMenuBox.getChildren().addAll(outputSelectBox);
-		outputSelectBox.getChildren().addAll(oiSelectLabel, oiDropDownList);
+		outputSelectBox.getChildren().addAll(
+			oiSelectLabel,
+			oiDropDownList,
+			vResultsSeparator_1,
+			saveResultsButton
+		);
 
 		//IMAGES
 		imagesBox.getChildren().addAll(
@@ -312,6 +321,18 @@ public class FXApp extends Application {
 								.collect(Collectors.toList())
 						));
 						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
+					}
+				}
+			}
+		);
+
+		saveResultsButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null
+						&& !toAlgorythmsImage.getResults().isEmpty()) {
+						pictureService.saveResultsToFS(toAlgorythmsImage);
 					}
 				}
 			}

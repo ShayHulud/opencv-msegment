@@ -209,9 +209,9 @@ public class PictureService {
 	}
 
 	private byte[] generateBGRColor() {
-		byte b = (byte) this.rnd.nextInt(256);
-		byte g = (byte) this.rnd.nextInt(256);
-		byte r = (byte) this.rnd.nextInt(256);
+		byte b = (byte) (this.rnd.nextInt(156) + 100);
+		byte g = (byte) (this.rnd.nextInt(156) + 100);
+		byte r = (byte) (this.rnd.nextInt(156) + 100);
 		return new byte[]{b, g, r};
 	}
 
@@ -273,6 +273,7 @@ public class PictureService {
 	}
 
 	//TODO: Разбить на операции. Или сделать так, чтобы возвращало пачку маркеров, чтобы можно было waterShed'у передать матрицу с маркерами и сорц.
+	@GUI
 	public ImageInfo colorAutoMarkerWatershed(ImageInfo ii) {
 
 		int step = 0;
@@ -346,6 +347,7 @@ public class PictureService {
 		return ii;
 	}
 
+	@CONSOLE
 	public ImageInfo shapeAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
 		try {
 			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
@@ -356,6 +358,7 @@ public class PictureService {
 		}
 	}
 
+	@GUI
 	public ImageInfo shapeAutoMarkerWatershed(ImageInfo ii) {
 
 		int step = 0;
@@ -468,6 +471,7 @@ public class PictureService {
 	}
 
 	//TODO: опциональная предобработка.
+	@GUI
 	public ImageInfo brightDepth(ImageInfo ii, Integer depth) {
 		int step = 0;
 		ii.setMethod(SegMethod.BRIGHT_DEPTH_METHOD);
@@ -499,7 +503,6 @@ public class PictureService {
 		}
 		log.info("max brightness: {}; min brightness: {}", maxBrightness, minBrightness);
 
-		//TODO: Сделать изменяемым
 		//MAKE THRESHOLDS
 		LinkedList<Integer> thresholds = new LinkedList<>();
 		for (int i = 1; i < depth; i++) {
@@ -607,6 +610,158 @@ public class PictureService {
 		ii.setMethod(SegMethod.NOT_CONNECTED_MARKERS);
 		Mat src = ii.getMat().clone();
 
+		Mat srcGray = new Mat();
+		Imgproc.cvtColor(src, srcGray, Imgproc.COLOR_BGR2GRAY);
+		srcGray.convertTo(srcGray, CvType.CV_8U);
+		Integer medianmaskBlurSize = this.calculateSizeOfSquareBlurMask(srcGray);
+		Imgproc.medianBlur(srcGray, srcGray, medianmaskBlurSize);
+		saveResult(srcGray.clone(), ii, ++step, "blured_by_" + medianmaskBlurSize + "x" + medianmaskBlurSize);
+
+		log.info("srcGray type of: {}; channels: {}", srcGray.type(), srcGray.channels());
+
+		//DETECT MAX BRIGHTNESS
+		int maxBrightness = 0;
+		int minBrightness = 255;
+		for (int i = 0; i < srcGray.rows() - 1; i++) {
+			for (int j = 0; j < srcGray.cols() - 1; j++) {
+				int brightness = (int) srcGray.get(i, j)[0];
+
+				if (brightness > maxBrightness) {
+					maxBrightness = brightness;
+				}
+				if (brightness < minBrightness) {
+					minBrightness = brightness;
+				}
+			}
+		}
+		log.info("max brightness: {}; min brightness: {}", maxBrightness, minBrightness);
+
+		//MAKE THRESHOLDS
+		LinkedList<Integer> thresholds = new LinkedList<>();
+		for (int i = 1; i < depth; i++) {
+			int threshold = minBrightness + ((maxBrightness - minBrightness) / depth) * i;
+			threshold = threshold < minBrightness ? minBrightness : threshold;
+			threshold = threshold > maxBrightness ? maxBrightness : threshold;
+			thresholds.add(threshold);
+		}
+		log.info("depth thresholds:{}", thresholds);
+
+		//MAKE LAYERS
+		Map<Integer, Mat> brightMap = new HashMap<Integer, Mat>() {{
+			for (int i = 1; i < depth + 1; i++) {
+				put(i, new Mat(srcGray.size(), srcGray.type()));
+			}
+		}};
+
+		//ALLOCATE TO LAYERS
+		for (int i = 0; i < srcGray.rows() - 1; i++) {
+			for (int j = 0; j < srcGray.cols() - 1; j++) {
+				short brightness = (short) srcGray.get(i, j)[0];
+
+				int lastThreshold = thresholds.getLast();
+				if (brightness > lastThreshold) {
+					brightMap.get(thresholds.size() + 1)
+						.put(i, j, new byte[]{(byte) brightness});
+				} else {
+					for (int k = 0; k < thresholds.size(); k++) {
+						int currThreshold = thresholds.get(k);
+						if (brightness <= currThreshold) {
+							brightMap.get(k + 1).put(i, j, new byte[]{(byte) brightness});
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		++step;
+		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
+			Integer _idx = entry.getKey();
+			Mat _mat = entry.getValue();
+			saveResult(_mat.clone(), ii, step, "level_" + _idx + "_of_depth");
+		}
+
+		++step;
+		Integer openMaskSize = this.calculateSizeOfSquareBlurMask(src);
+		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
+			Integer _idx = entry.getKey();
+			Mat _mat = entry.getValue();
+			Imgproc.erode(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
+			Imgproc.dilate(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
+			saveResult(_mat.clone(), ii, step, "open_of_level_" + _idx + "_of_depth");
+		}
+
+		//WSHED
+		++step;
+		List<Mat> singledMarkers = new LinkedList<>();
+		Mat wshedMarkSumm = new Mat(src.size(), CvType.CV_32S);
+		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
+			Integer _idx = entry.getKey();
+			Mat _mat = entry.getValue();
+			log.info("Processing level {} markers ...", _idx);
+
+			List<MatOfPoint> contours = new ArrayList<>();
+			MatOfInt4 hierarchy = new MatOfInt4();
+			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_NONE);
+
+			Mat markers = Mat.zeros(_mat.size(), CvType.CV_32S);
+			List<Mat> singleLayerMarkers = new LinkedList<>();
+			Integer percentOfImage = calculatePercentAreaOfImage(_mat, 2.5);
+
+			for (int i = 0; i < contours.size(); i++) {
+				Double markerSize = Imgproc.contourArea(contours.get(i));
+				if (markerSize < percentOfImage) {
+					continue;
+				}
+
+				Mat marker = Mat.zeros(_mat.size(), CvType.CV_32S);
+				Imgproc.drawContours(marker, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
+
+				//TODO: Сделать уменьшение областей до точек, линий. При уменьшении точно отпадет смысл сортировки маркеров по размеру.
+				Mat _eroded = Mat.zeros(srcGray.size(), srcGray.type());
+				marker.convertTo(_eroded, _eroded.type());
+				Imgproc.erode(_eroded, _eroded, Mat.ones(3, 3, marker.type()));
+
+				_eroded.clone().convertTo(_eroded, CvType.CV_32S);
+				Core.add(markers, _eroded, markers);
+				singleLayerMarkers.add(_eroded);
+			}
+			saveResult(markers.clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 10000);
+			Mat dst = this.watershed(src, markers, contours.size());
+			saveResult(dst.clone(), ii, step, "result_of_level_" + _idx + "_of_depth");
+
+			//TODO: Сделать замену не в каждом, а в склейке, реализовать сортировку слоёв по количеству. причем наврено сначала сортировку, а потом замену, чтобы было лучше для алгоритма (но это не точно)
+			//Change value for layer _indx
+			for (Mat singleMat : singleLayerMarkers) {
+				for (int i = 0; i < singleMat.rows(); i++) {
+					for (int j = 0; j < singleMat.cols(); j++) {
+						double[] indexes = singleMat.get(i, j);
+						int index = (int) indexes[0];
+						if (index > 0) {
+							indexes[0] = _idx;
+							singleMat.put(i, j, indexes);
+						}
+					}
+				}
+			}
+
+			singledMarkers.addAll(singleLayerMarkers);
+
+			log.info("...complete");
+		}
+
+		//sort by size
+//		singledMarkers = singledMarkers.stream()
+//			.sorted(Comparator.comparingDouble(Imgproc::contourArea))
+//			.collect(Collectors.toList());
+
+		for (Mat marker : singledMarkers) {
+			Core.add(wshedMarkSumm, marker, wshedMarkSumm);
+		}
+		saveResult(wshedMarkSumm.clone(), ii, ++step, "markers_summ_eroded_markers", 10000);
+		Mat dst = this.watershed(src, wshedMarkSumm, depth);
+		saveResult(dst.clone(), ii, ++step, "result_summ_eroded_markers");
+
 		return ii;
 	}
 
@@ -634,6 +789,13 @@ public class PictureService {
 		return result;
 	}
 
+	public Integer calculatePercentAreaOfImage(Mat src, double percent) {
+		int percentH = Double.valueOf((src.cols() * percent) / 100).intValue();
+		int percentV = Double.valueOf((src.rows() * percent) / 100).intValue();
+		int area = percentH * percentV;
+		return area;
+	}
+
 	public Mat watershed(Mat src, Mat markers, Integer depth) {
 		Imgproc.watershed(src, markers);
 
@@ -641,7 +803,8 @@ public class PictureService {
 		for (int i = 0; i < depth; i++) {
 			colors.add(generateBGRColor());
 		}
-		byte[] backgroundColor = generateBGRColor();
+//		byte[] backgroundColor = generateBGRColor();
+		byte[] backgroundColor = new byte[]{0, 0, 0};
 
 		Mat dst = new Mat(markers.size(), CvType.CV_8UC3);
 		for (int i = 0; i < markers.rows(); i++) {

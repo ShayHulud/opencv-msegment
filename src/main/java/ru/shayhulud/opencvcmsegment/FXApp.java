@@ -106,7 +106,6 @@ public class FXApp extends Application {
 
 		//ALGORYTHMS
 		HBox algorythmsSelectBox = new HBox();
-		//Color wshed button
 		Button colorWshedButton = new Button("color wshed");
 		colorWshedButton.getStyleClass().addAll("select-control");
 		Button handWshedButton = new Button("hand wshed");
@@ -117,10 +116,21 @@ public class FXApp extends Application {
 		Separator vAlgSeparator_2 = new Separator(Orientation.VERTICAL);
 		Button brightDepthButton = new Button("bright dpth");
 		brightDepthButton.getStyleClass().addAll("select-control");
+		Separator vAlgSeparator_3 = new Separator(Orientation.VERTICAL);
+		Button notConnectedButton = new Button("not connected");
+		notConnectedButton.getStyleClass().addAll("select-control");
+
+		//Separator
+		Separator iiSelectSeparator_3 = new Separator();
+		iiSelectSeparator_3.setOrientation(Orientation.HORIZONTAL);
+		iiSelectSeparator_3.getStyleClass().addAll("separator");
+
+		//PARAMS
+		HBox paramsBox = new HBox();
+		Label depthParamLabel = new Label("Depth:");
 		TextField depthCountInput = new TextField();
 		depthCountInput.setPromptText("1");
 		depthCountInput.getStyleClass().addAll("select-control");
-
 
 		//MENU-RIGHT
 		VBox outputMenuBox = new VBox();
@@ -182,7 +192,9 @@ public class FXApp extends Application {
 			iiSelectSeparator_1,
 			manageBox,
 			iiSelectSeparator_2,
-			algorythmsSelectBox
+			algorythmsSelectBox,
+			iiSelectSeparator_3,
+			paramsBox
 		);
 		imageSelectBox.getChildren().addAll(
 			iiSelectLabel,
@@ -198,6 +210,11 @@ public class FXApp extends Application {
 			shapeWshedButton,
 			vAlgSeparator_2,
 			brightDepthButton,
+			vAlgSeparator_3,
+			notConnectedButton
+		);
+		paramsBox.getChildren().addAll(
+			depthParamLabel,
 			depthCountInput
 		);
 		//OUTPUT MENU
@@ -312,6 +329,27 @@ public class FXApp extends Application {
 					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
 						toAlgorythmsImage = processedImage.clone();
 						toAlgorythmsImage = pictureService.brightDepth(
+							toAlgorythmsImage,
+							Integer.parseInt(depthCountInput.getText())
+						);
+						oiDropDownList.setItems(FXCollections.observableArrayList(
+							toAlgorythmsImage.getResults().stream()
+								.map(Result::getStepName)
+								.collect(Collectors.toList())
+						));
+						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
+					}
+				}
+			}
+		);
+
+		notConnectedButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
+						toAlgorythmsImage = processedImage.clone();
+						toAlgorythmsImage = pictureService.notConnectedMarkers(
 							toAlgorythmsImage,
 							Integer.parseInt(depthCountInput.getText())
 						);

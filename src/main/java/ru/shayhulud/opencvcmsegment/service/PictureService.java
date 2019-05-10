@@ -701,6 +701,7 @@ public class PictureService {
 
 		//TODO:
 		// 1) -сбор среднего по блоку-
+		// 1.1) При сборе предусмотреть пропуск значений == 0 или выделение их в отдельный блок, чтобы по ним не строились маркеры.
 		// 2) сравнивать с средним по сегменту
 		// 3) -лимит в 256/depth-
 		// 4) в маркеры - пиксели от среднего значения +/- % от ширины блока
@@ -710,65 +711,58 @@ public class PictureService {
 		log.info("max block size = {}", blockSizeLimit);
 		List<Map<Integer, Integer>> fThresholds = new LinkedList<>();
 		List<Integer> meanFlexThresholdBlock = new LinkedList<>();
-		meanFlexThresholdBlock.add((int) brightHistOut.get(0, 0)[0]);
+		int maxBlockValue = (int) brightHist.get(0, 0)[0];
+		meanFlexThresholdBlock.add((int) brightHist.get(0, 0)[0]);
 		for (int i = 1; i < histSize; i++) {
-			int prev = (int) brightHistOut.get(i - 1, 0)[0];
-			int curr = (int) brightHistOut.get(i, 0)[0];
+			int prev = (int) brightHist.get(i - 1, 0)[0];
+			int curr = (int) brightHist.get(i, 0)[0];
 
-			int comparing = Integer.compare(prev, curr);
+			// Нужно потом для нормализации
+			if (curr >= maxBlockValue) {
+				maxBlockValue = curr;
+			}
 
-			if (comparing == 0) {
-				meanFlexThresholdBlock.add(prev);
-				if (meanFlexThresholdBlock.size() >= blockSizeLimit) {
-					fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
+			if (curr == prev) {
+				meanFlexThresholdBlock.add(curr);
+				if (meanFlexThresholdBlock.size() == blockSizeLimit) {
+					fThresholds.add(Collections.singletonMap(i, MathUtil.meanI(meanFlexThresholdBlock)));
 					meanFlexThresholdBlock = new LinkedList<>();
 				}
 				continue;
-			} else if (comparing < 0) {
-				if (curr - prev < curr / 2) {
-					meanFlexThresholdBlock.add(prev);
-					if (meanFlexThresholdBlock.size() >= blockSizeLimit) {
-						fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
-						meanFlexThresholdBlock = new LinkedList<>();
-					}
-					continue;
-				} else {
-					fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
+			} else if (Math.max(MathUtil.meanI(meanFlexThresholdBlock), Math.abs(curr - prev)) < Math.max(curr, prev) / 2) { //TODO: посмотреть правильное соотношение
+				meanFlexThresholdBlock.add(curr);
+				if (meanFlexThresholdBlock.size() == blockSizeLimit) {
+					fThresholds.add(Collections.singletonMap(i, MathUtil.meanI(meanFlexThresholdBlock)));
 					meanFlexThresholdBlock = new LinkedList<>();
 				}
+				continue;
 			} else {
-				if (prev - curr < prev / 2) {
-					meanFlexThresholdBlock.add(prev);
-					if (meanFlexThresholdBlock.size() >= blockSizeLimit) {
-						fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
-						meanFlexThresholdBlock = new LinkedList<>();
-					}
-					continue;
-				} else {
-					fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
-					meanFlexThresholdBlock = new LinkedList<>();
-				}
+				fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
+				meanFlexThresholdBlock = new LinkedList<>();
+				meanFlexThresholdBlock.add(curr);
 			}
 		}
 		LinkedList<Integer> thresholds = new LinkedList<>();
 		fThresholds.forEach(_integerIntegerMap -> thresholds.addAll(_integerIntegerMap.keySet()));
 		log.info("flex thresholds:{} size {}", thresholds, fThresholds.size());
 
+		Mat fBrightHistImage = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
+		int fbbin_w = Double.valueOf(hist_w / (histSize)).intValue();
 		int blockBegin = 0;
 		for (Map<Integer, Integer> block : fThresholds) {
 			for (Map.Entry<Integer, Integer> entry : block.entrySet()) {
 				Integer _threshold = entry.getKey();
 				Integer _value = entry.getValue();
-				Imgproc.rectangle(brightHistImage,
-					new Point(blockBegin, hist_h - _value),
-					new Point(blockBegin + _threshold, hist_h),
+				Imgproc.rectangle(fBrightHistImage,
+					new Point(blockBegin * fbbin_w, hist_h - MathUtil.normalize(_value.doubleValue(), (double) maxBlockValue, (double) hist_h)),
+					new Point((_threshold + 1) * fbbin_w, hist_h),
 					new Scalar(170, 170, 170),
 					-1
 				);
-				blockBegin += _threshold;
+				blockBegin = _threshold + 1;
 			}
 		}
-		saveResult(brightHistImage.clone(), ii, step, "flex_bright_thresholds");
+		saveResult(fBrightHistImage.clone(), ii, step, "flex_bright_thresholds");
 
 		//MAKE LAYERS
 		Map<Integer, Mat> brightMap = new HashMap<Integer, Mat>() {{

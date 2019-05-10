@@ -9,6 +9,7 @@ import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.MatOfFloat;
+import org.opencv.core.MatOfInt;
 import org.opencv.core.MatOfInt4;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
@@ -17,9 +18,10 @@ import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import ru.shayhulud.opencvcmsegment.common.behavior.CONSOLE;
 import ru.shayhulud.opencvcmsegment.common.behavior.GUI;
+import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.common.util.OutFileNameGenerator;
 import ru.shayhulud.opencvcmsegment.common.util.PixelUtil;
-import ru.shayhulud.opencvcmsegment.exceptions.IncorrectMatBodyLengthException;
+import ru.shayhulud.opencvcmsegment.exceptions.WrongMatBodyLengthException;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.Result;
 import ru.shayhulud.opencvcmsegment.model.dic.SegMethod;
@@ -30,6 +32,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -614,41 +618,161 @@ public class PictureService {
 		Imgproc.cvtColor(src, srcGray, Imgproc.COLOR_BGR2GRAY);
 		srcGray.convertTo(srcGray, CvType.CV_8U);
 		Integer medianmaskBlurSize = this.calculateSizeOfSquareBlurMask(srcGray);
+		//K<=16
 		Imgproc.medianBlur(srcGray, srcGray, medianmaskBlurSize);
 		saveResult(srcGray.clone(), ii, ++step, "blured_by_" + medianmaskBlurSize + "x" + medianmaskBlurSize);
 
 		log.info("srcGray type of: {}; channels: {}", srcGray.type(), srcGray.channels());
 
-		//DETECT MAX BRIGHTNESS
-		int maxBrightness = 0;
-		int minBrightness = 255;
-		for (int i = 0; i < srcGray.rows() - 1; i++) {
-			for (int j = 0; j < srcGray.cols() - 1; j++) {
-				int brightness = (int) srcGray.get(i, j)[0];
+		//COLOR HISTOS
+		++step;
+		float[] range = {0f, 256f};
 
-				if (brightness > maxBrightness) {
-					maxBrightness = brightness;
+		int hist_w = 1080;
+		int hist_h = 1080;
+		int histSize = 256;
+		Mat histImage = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
+		int bin_w = Double.valueOf(hist_w / histSize).intValue();
+
+		List<Mat> bgrPanes = new LinkedList<>();
+		List<Mat> hists = new LinkedList<>();
+		Core.split(src, bgrPanes);
+		for (int i = 0; i < bgrPanes.size(); i++) {
+			Mat pane = bgrPanes.get(i);
+//			saveResult(pane.clone(), ii, step, "bgr_split_" + i);
+
+			Mat hist = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
+			Imgproc.calcHist(Arrays.asList(pane), new MatOfInt(0), new Mat(), hist, new MatOfInt(histSize), new MatOfFloat(range));
+			Core.normalize(hist, hist, 0, histImage.rows(), Core.NORM_MINMAX, -1, new Mat());
+			hists.add(hist);
+
+//			Mat histSet = hist.clone();
+//			histSet.convertTo(histSet, CvType.CV_8UC3);
+//			saveResult(histSet, ii, step, "hist_set_" + i);
+		}
+
+		for (int i = 1; i < histSize; i++) {
+			Imgproc.line(
+				histImage,
+				new Point(bin_w * (i - 1), hist_h - (hists.get(0).get(i - 1, 0)[0])),
+				new Point(bin_w * (i), hist_h - (hists.get(0).get(i, 0)[0])),
+				new Scalar(255, 0, 0), 2, 8, 0
+			);
+			Imgproc.line(
+				histImage,
+				new Point(bin_w * (i - 1), hist_h - (hists.get(1).get(i - 1, 0)[0])),
+				new Point(bin_w * (i), hist_h - (hists.get(1).get(i, 0)[0])),
+				new Scalar(0, 255, 0), 2, 8, 0
+			);
+			Imgproc.line(
+				histImage,
+				new Point(bin_w * (i - 1), hist_h - (hists.get(2).get(i - 1, 0)[0])),
+				new Point(bin_w * (i), hist_h - (hists.get(2).get(i, 0)[0])),
+				new Scalar(0, 0, 255), 2, 8, 0
+			);
+		}
+		Mat histOut = histImage.clone();
+		histOut.convertTo(histOut, CvType.CV_8SC3);
+		saveResult(histOut.clone(), ii, step, "bgr_histo");
+
+		//BRIGHT HISTO
+		++step;
+		Mat brightHistImage = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
+		Mat brightHist = new Mat(hist_w, hist_h, CvType.CV_8UC1, new Scalar(0, 0, 0));
+		Imgproc.calcHist(Arrays.asList(srcGray), new MatOfInt(0), new Mat(), brightHist, new MatOfInt(histSize), new MatOfFloat(range));
+
+		//OUTPUT BRIGHTHISTO
+		Mat brightHistOut = brightHist.clone();
+		Core.normalize(brightHistOut, brightHistOut, 0, brightHistImage.rows(), Core.NORM_MINMAX, -1, new Mat());
+//		Mat histSet = brightHistOut.clone();
+//		histSet.convertTo(histSet, CvType.CV_8UC3);
+//		saveResult(histSet, ii, step, "bright_hist_set");
+
+		int bbin_w = Double.valueOf(hist_w / (histSize)).intValue();
+		for (int i = 1; i < histSize; i++) {
+			Imgproc.rectangle(brightHistImage,
+				new Point(bbin_w * (i - 1), hist_h - (brightHistOut.get(i - 1, 0)[0])),
+				new Point(bbin_w * (i), hist_h),
+				new Scalar(170, 170, 170),
+				-1
+			);
+		}
+		saveResult(brightHistImage.clone(), ii, step, "bright_histo");
+
+		//TODO:
+		// 1) -сбор среднего по блоку-
+		// 2) сравнивать с средним по сегменту
+		// 3) -лимит в 256/depth-
+		// 4) в маркеры - пиксели от среднего значения +/- % от ширины блока
+		// 5) сравниваем самый узкий и самый высокий блок, кто из них по площади больше - тот фон.
+		//Collecting ranges
+		int blockSizeLimit = Double.valueOf(256 / depth).intValue();
+		log.info("max block size = {}", blockSizeLimit);
+		List<Map<Integer, Integer>> fThresholds = new LinkedList<>();
+		List<Integer> meanFlexThresholdBlock = new LinkedList<>();
+		meanFlexThresholdBlock.add((int) brightHistOut.get(0, 0)[0]);
+		for (int i = 1; i < histSize; i++) {
+			int prev = (int) brightHistOut.get(i - 1, 0)[0];
+			int curr = (int) brightHistOut.get(i, 0)[0];
+
+			int comparing = Integer.compare(prev, curr);
+
+			if (comparing == 0) {
+				meanFlexThresholdBlock.add(prev);
+				if (meanFlexThresholdBlock.size() >= blockSizeLimit) {
+					fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
+					meanFlexThresholdBlock = new LinkedList<>();
 				}
-				if (brightness < minBrightness) {
-					minBrightness = brightness;
+				continue;
+			} else if (comparing < 0) {
+				if (curr - prev < curr / 2) {
+					meanFlexThresholdBlock.add(prev);
+					if (meanFlexThresholdBlock.size() >= blockSizeLimit) {
+						fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
+						meanFlexThresholdBlock = new LinkedList<>();
+					}
+					continue;
+				} else {
+					fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
+					meanFlexThresholdBlock = new LinkedList<>();
+				}
+			} else {
+				if (prev - curr < prev / 2) {
+					meanFlexThresholdBlock.add(prev);
+					if (meanFlexThresholdBlock.size() >= blockSizeLimit) {
+						fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
+						meanFlexThresholdBlock = new LinkedList<>();
+					}
+					continue;
+				} else {
+					fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
+					meanFlexThresholdBlock = new LinkedList<>();
 				}
 			}
 		}
-		log.info("max brightness: {}; min brightness: {}", maxBrightness, minBrightness);
-
-		//MAKE THRESHOLDS
 		LinkedList<Integer> thresholds = new LinkedList<>();
-		for (int i = 1; i < depth; i++) {
-			int threshold = minBrightness + ((maxBrightness - minBrightness) / depth) * i;
-			threshold = threshold < minBrightness ? minBrightness : threshold;
-			threshold = threshold > maxBrightness ? maxBrightness : threshold;
-			thresholds.add(threshold);
+		fThresholds.forEach(_integerIntegerMap -> thresholds.addAll(_integerIntegerMap.keySet()));
+		log.info("flex thresholds:{} size {}", thresholds, fThresholds.size());
+
+		int blockBegin = 0;
+		for (Map<Integer, Integer> block : fThresholds) {
+			for (Map.Entry<Integer, Integer> entry : block.entrySet()) {
+				Integer _threshold = entry.getKey();
+				Integer _value = entry.getValue();
+				Imgproc.rectangle(brightHistImage,
+					new Point(blockBegin, hist_h - _value),
+					new Point(blockBegin + _threshold, hist_h),
+					new Scalar(170, 170, 170),
+					-1
+				);
+				blockBegin += _threshold;
+			}
 		}
-		log.info("depth thresholds:{}", thresholds);
+		saveResult(brightHistImage.clone(), ii, step, "flex_bright_thresholds");
 
 		//MAKE LAYERS
 		Map<Integer, Mat> brightMap = new HashMap<Integer, Mat>() {{
-			for (int i = 1; i < depth + 1; i++) {
+			for (int i = 1; i < fThresholds.size() + 1; i++) {
 				put(i, new Mat(srcGray.size(), srcGray.type()));
 			}
 		}};
@@ -694,7 +818,6 @@ public class PictureService {
 		//WSHED
 		++step;
 		List<Mat> singledMarkers = new LinkedList<>();
-		Mat wshedMarkSumm = new Mat(src.size(), CvType.CV_32S);
 		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
 			Integer _idx = entry.getKey();
 			Mat _mat = entry.getValue();
@@ -755,6 +878,8 @@ public class PictureService {
 //			.sorted(Comparator.comparingDouble(Imgproc::contourArea))
 //			.collect(Collectors.toList());
 
+		//TODO: покрасить маркеры каждого слоя в свой цвет.
+		Mat wshedMarkSumm = new Mat(src.size(), CvType.CV_32S);
 		for (Mat marker : singledMarkers) {
 			Core.add(wshedMarkSumm, marker, wshedMarkSumm);
 		}
@@ -822,7 +947,7 @@ public class PictureService {
 
 	private Mat create3x3Kernel(int type, int[] kernelBody) {
 		if (kernelBody.length != 9) {
-			throw new IncorrectMatBodyLengthException("wrong kernel length");
+			throw new WrongMatBodyLengthException("wrong kernel length");
 		}
 
 		double[] kernelBodyD = new double[kernelBody.length];

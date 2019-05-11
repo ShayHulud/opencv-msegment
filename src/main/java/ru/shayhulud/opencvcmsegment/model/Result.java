@@ -5,6 +5,9 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.opencv.core.Mat;
 
+/**
+ * Объект результата работы алгоритма.
+ */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

@@ -37,14 +37,32 @@ import java.io.File;
 import java.io.IOException;
 import java.util.stream.Collectors;
 
+/**
+ * Класс функционала приложения в графическом интерфейсе.
+ */
 @Slf4j
 public class FXApp extends Application {
 
+	/**
+	 * Ширина бокса кадра.
+	 */
 	private static Double FRAME_WIDTH = 720D;
+	/**
+	 * Высота бокса кадра.
+	 */
 	private static Double FRAME_HEIGHT = 720D;
 
+	/**
+	 * Объект информации об изображении, для алгоритмов.
+	 */
 	public ImageInfo toAlgorythmsImage = null;
+	/**
+	 * Объект информации об изображении, для клонирования в изображение для алгоритмов.
+	 */
 	public ImageInfo processedImage = null;
+	/**
+	 * Холст для ручных маркеров.
+	 */
 	public WritableImage handMarkers;
 
 	@Override
@@ -249,12 +267,12 @@ public class FXApp extends Application {
 					File file = fileChooser.showOpenDialog(stage);
 					try {
 						if (file != null) {
-							processedImage = pictureService.readPicture(file);
-							toAlgorythmsImage = processedImage.clone();
-							inputImageView.setImage(pictureService.mat2Image(processedImage.getMat()));
+							FXApp.this.processedImage = pictureService.readPicture(file);
+							FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
+							inputImageView.setImage(pictureService.mat2Image(FXApp.this.processedImage.getMat()));
 
 							resetHandMarkers(markersDrawingImageView, inputImageView);
-							log.info("new writableImage size is {}x{}", handMarkers.getWidth(), handMarkers.getHeight());
+							log.info("new writableImage size is {}x{}", FXApp.this.handMarkers.getWidth(), FXApp.this.handMarkers.getHeight());
 						}
 					} catch (IOException ex) {
 						log.error("error while open image", ex);
@@ -269,11 +287,11 @@ public class FXApp extends Application {
 			new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent event) {
-					if (processedImage != null && toAlgorythmsImage != null) {
-						toAlgorythmsImage = processedImage.clone();
-						toAlgorythmsImage = pictureService.colorAutoMarkerWatershed(toAlgorythmsImage);
+					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null) {
+						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
+						FXApp.this.toAlgorythmsImage = pictureService.colorAutoMarkerWatershed(FXApp.this.toAlgorythmsImage);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
-							toAlgorythmsImage.getResults().stream()
+							FXApp.this.toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)
 								.collect(Collectors.toList())
 						));
@@ -288,13 +306,13 @@ public class FXApp extends Application {
 			new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent event) {
-					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
-						Mat handMarkersMat = pictureService.image2Mat(handMarkers);
+					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null && FXApp.this.handMarkers != null) {
+						Mat handMarkersMat = pictureService.image2Mat(FXApp.this.handMarkers);
 						handMarkersMat = pictureService.bwMat(handMarkersMat);
-						toAlgorythmsImage = processedImage.clone();
-						toAlgorythmsImage = pictureService.handMarkerWatershed(toAlgorythmsImage, handMarkersMat);
+						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
+						FXApp.this.toAlgorythmsImage = pictureService.handMarkerWatershed(FXApp.this.toAlgorythmsImage, handMarkersMat);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
-							toAlgorythmsImage.getResults().stream()
+							FXApp.this.toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)
 								.collect(Collectors.toList())
 						));
@@ -308,11 +326,11 @@ public class FXApp extends Application {
 			new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent event) {
-					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
-						toAlgorythmsImage = processedImage.clone();
-						toAlgorythmsImage = pictureService.shapeAutoMarkerWatershed(toAlgorythmsImage);
+					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null && FXApp.this.handMarkers != null) {
+						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
+						FXApp.this.toAlgorythmsImage = pictureService.shapeAutoMarkerWatershed(FXApp.this.toAlgorythmsImage);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
-							toAlgorythmsImage.getResults().stream()
+							FXApp.this.toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)
 								.collect(Collectors.toList())
 						));
@@ -326,14 +344,14 @@ public class FXApp extends Application {
 			new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent event) {
-					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
-						toAlgorythmsImage = processedImage.clone();
-						toAlgorythmsImage = pictureService.brightDepth(
-							toAlgorythmsImage,
+					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null && FXApp.this.handMarkers != null) {
+						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
+						FXApp.this.toAlgorythmsImage = pictureService.brightDepth(
+							FXApp.this.toAlgorythmsImage,
 							Integer.parseInt(depthCountInput.getText())
 						);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
-							toAlgorythmsImage.getResults().stream()
+							FXApp.this.toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)
 								.collect(Collectors.toList())
 						));
@@ -347,14 +365,14 @@ public class FXApp extends Application {
 			new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent event) {
-					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null) {
-						toAlgorythmsImage = processedImage.clone();
-						toAlgorythmsImage = pictureService.notConnectedMarkers(
-							toAlgorythmsImage,
+					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null) {
+						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
+						FXApp.this.toAlgorythmsImage = pictureService.notConnectedMarkers(
+							FXApp.this.toAlgorythmsImage,
 							Integer.parseInt(depthCountInput.getText())
 						);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
-							toAlgorythmsImage.getResults().stream()
+							FXApp.this.toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)
 								.collect(Collectors.toList())
 						));
@@ -368,9 +386,9 @@ public class FXApp extends Application {
 			new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent event) {
-					if (processedImage != null && toAlgorythmsImage != null && handMarkers != null
-						&& !toAlgorythmsImage.getResults().isEmpty()) {
-						pictureService.saveResultsToFS(toAlgorythmsImage);
+					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null
+						&& !FXApp.this.toAlgorythmsImage.getResults().isEmpty()) {
+						pictureService.saveResultsToFS(FXApp.this.toAlgorythmsImage);
 					}
 				}
 			}
@@ -381,9 +399,9 @@ public class FXApp extends Application {
 			new EventHandler<ActionEvent>() {
 				@Override
 				public void handle(ActionEvent event) {
-					if (processedImage != null) {
+					if (FXApp.this.processedImage != null) {
 						resetHandMarkers(markersDrawingImageView, inputImageView);
-						log.info("reset writableImage [{}x{}]", handMarkers.getWidth(), handMarkers.getHeight());
+						log.info("reset writableImage [{}x{}]", FXApp.this.handMarkers.getWidth(), FXApp.this.handMarkers.getHeight());
 					}
 				}
 			});
@@ -393,7 +411,7 @@ public class FXApp extends Application {
 			@Override
 			public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
 				if (newValue != null && !newValue.isEmpty()) {
-					toAlgorythmsImage.getResults().stream()
+					FXApp.this.toAlgorythmsImage.getResults().stream()
 						.filter(_result -> _result.getStepName().equals(newValue))
 						.findFirst()
 						.ifPresent(_result -> {
@@ -416,10 +434,10 @@ public class FXApp extends Application {
 				log.debug("clicked on {}x{}", x, y);
 				//TODO: Сделать настраиваемый радиус ручного маркера
 				drawMarkerWithRadius(
-					MathUtil.normalize(x, FRAME_WIDTH, handMarkers.getWidth()).intValue(),
-					MathUtil.normalize(y, FRAME_HEIGHT, handMarkers.getHeight()).intValue(),
+					MathUtil.normalize(x, FRAME_WIDTH, FXApp.this.handMarkers.getWidth()).intValue(),
+					MathUtil.normalize(y, FRAME_HEIGHT, FXApp.this.handMarkers.getHeight()).intValue(),
 					2,
-					handMarkers,
+					FXApp.this.handMarkers,
 					new Color(1, 1, 1, 1)
 				);
 				me.consume();
@@ -435,10 +453,10 @@ public class FXApp extends Application {
 				}
 				//TODO: Сделать настраиваемый радиус ручного маркера
 				drawMarkerWithRadius(
-					MathUtil.normalize(x, FRAME_WIDTH, handMarkers.getWidth()).intValue(),
-					MathUtil.normalize(y, FRAME_HEIGHT, handMarkers.getHeight()).intValue(),
+					MathUtil.normalize(x, FRAME_WIDTH, FXApp.this.handMarkers.getWidth()).intValue(),
+					MathUtil.normalize(y, FRAME_HEIGHT, FXApp.this.handMarkers.getHeight()).intValue(),
 					2,
-					handMarkers,
+					FXApp.this.handMarkers,
 					new Color(1, 1, 1, 1)
 				);
 			}
@@ -515,10 +533,10 @@ public class FXApp extends Application {
 		handMarkersContainer.setFitWidth(sourceContainer.fitWidthProperty().doubleValue());
 		handMarkersContainer.setFitHeight(sourceContainer.fitHeightProperty().doubleValue());
 
-		handMarkers = new WritableImage(
+		FXApp.this.handMarkers = new WritableImage(
 			(int) sourceContainer.getImage().getWidth(),
 			(int) sourceContainer.getImage().getHeight()
 		);
-		handMarkersContainer.setImage(handMarkers);
+		handMarkersContainer.setImage(FXApp.this.handMarkers);
 	}
 }

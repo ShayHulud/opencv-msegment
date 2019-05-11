@@ -2,6 +2,9 @@ package ru.shayhulud.opencvcmsegment.common.util;
 
 import java.util.List;
 
+/**
+ * Утиль для коллекций.
+ */
 public final class CollectionUtil {
 
 	private CollectionUtil() {

@@ -3,6 +3,9 @@ package ru.shayhulud.opencvcmsegment.model.dic;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 
+/**
+ * Методы.
+ */
 @AllArgsConstructor
 public enum SegMethod {
 

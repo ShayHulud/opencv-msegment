@@ -22,6 +22,7 @@ import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.common.util.OutFileNameGenerator;
 import ru.shayhulud.opencvcmsegment.common.util.PixelUtil;
 import ru.shayhulud.opencvcmsegment.exceptions.WrongMatBodyLengthException;
+import ru.shayhulud.opencvcmsegment.model.BrightLevel;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.Result;
 import ru.shayhulud.opencvcmsegment.model.dic.SegMethod;
@@ -33,7 +34,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -628,8 +628,8 @@ public class PictureService {
 		++step;
 		float[] range = {0f, 256f};
 
-		int hist_w = 1080;
-		int hist_h = 1080;
+		int hist_w = 1024;
+		int hist_h = 1024;
 		int histSize = 256;
 		Mat histImage = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
 		int bin_w = Double.valueOf(hist_w / histSize).intValue();
@@ -700,73 +700,93 @@ public class PictureService {
 		saveResult(brightHistImage.clone(), ii, step, "bright_histo");
 
 		//TODO:
-		// 1) -сбор среднего по блоку-
-		// 1.1) При сборе предусмотреть пропуск значений == 0 или выделение их в отдельный блок, чтобы по ним не строились маркеры.
-		// 2) сравнивать с средним по сегменту
-		// 3) -лимит в 256/depth-
+		// 2) ~сравнивать с средним по сегменту~
 		// 4) в маркеры - пиксели от среднего значения +/- % от ширины блока
 		// 5) сравниваем самый узкий и самый высокий блок, кто из них по площади больше - тот фон.
 		//Collecting ranges
 		int blockSizeLimit = Double.valueOf(256 / depth).intValue();
 		log.info("max block size = {}", blockSizeLimit);
-		List<Map<Integer, Integer>> fThresholds = new LinkedList<>();
+		List<BrightLevel> fThresholds = new LinkedList<>();
 		List<Integer> meanFlexThresholdBlock = new LinkedList<>();
-		int maxBlockValue = (int) brightHist.get(0, 0)[0];
-		meanFlexThresholdBlock.add((int) brightHist.get(0, 0)[0]);
+		int startHistValue = (int) brightHist.get(0, 0)[0];
+		meanFlexThresholdBlock.add(startHistValue);
+		BrightLevel temp = new BrightLevel(0, 0, startHistValue);
 		for (int i = 1; i < histSize; i++) {
 			int prev = (int) brightHist.get(i - 1, 0)[0];
 			int curr = (int) brightHist.get(i, 0)[0];
 
-			// Нужно потом для нормализации
-			if (curr >= maxBlockValue) {
-				maxBlockValue = curr;
+			if (curr == 0) {
+				if (prev != 0) {
+					temp.setEnd(i - 1);
+					fThresholds.add(temp.clone());
+				}
+
+				temp = new BrightLevel(i, i, curr);
+				meanFlexThresholdBlock = new LinkedList<>();
+				continue;
 			}
 
-			if (curr == prev) {
-				meanFlexThresholdBlock.add(curr);
-				if (meanFlexThresholdBlock.size() == blockSizeLimit) {
-					fThresholds.add(Collections.singletonMap(i, MathUtil.meanI(meanFlexThresholdBlock)));
+			if (prev == 0) {
+				temp = new BrightLevel(i, i, curr);
+			}
+
+			List<Integer> meanListWithCurrent = new LinkedList<>(meanFlexThresholdBlock);
+			meanListWithCurrent.add(curr);
+
+			//TODO: вынести в инпут параметры
+			double coeff = 0.5;
+			int oldMean = meanFlexThresholdBlock.isEmpty() ? curr : MathUtil.meanI(meanFlexThresholdBlock);
+			int newMean = MathUtil.meanI(meanListWithCurrent);
+			double min_t = oldMean - oldMean * coeff;
+			double max_t = oldMean + oldMean * coeff;
+
+			if (min_t <= newMean && newMean <= max_t) {
+				if (meanFlexThresholdBlock.size() >= blockSizeLimit) {
+					temp.setEnd(i - 1);
+					fThresholds.add(temp.clone());
+
+					temp = new BrightLevel(i, i, curr);
 					meanFlexThresholdBlock = new LinkedList<>();
+					meanFlexThresholdBlock.add(curr);
+					continue;
+				} else {
+					meanFlexThresholdBlock.add(curr);
+					temp.setCount(temp.getCount() + curr);
+					continue;
 				}
-				continue;
-			} else if (Math.max(MathUtil.meanI(meanFlexThresholdBlock), Math.abs(curr - prev)) < Math.max(curr, prev) / 2) { //TODO: посмотреть правильное соотношение
-				meanFlexThresholdBlock.add(curr);
-				if (meanFlexThresholdBlock.size() == blockSizeLimit) {
-					fThresholds.add(Collections.singletonMap(i, MathUtil.meanI(meanFlexThresholdBlock)));
-					meanFlexThresholdBlock = new LinkedList<>();
-				}
-				continue;
 			} else {
-				fThresholds.add(Collections.singletonMap(i - 1, MathUtil.meanI(meanFlexThresholdBlock)));
+				temp.setEnd(i - 1);
+				fThresholds.add(temp.clone());
+
+				temp = new BrightLevel(i, i, curr);
 				meanFlexThresholdBlock = new LinkedList<>();
 				meanFlexThresholdBlock.add(curr);
 			}
 		}
-		LinkedList<Integer> thresholds = new LinkedList<>();
-		fThresholds.forEach(_integerIntegerMap -> thresholds.addAll(_integerIntegerMap.keySet()));
-		log.info("flex thresholds:{} size {}", thresholds, fThresholds.size());
+		log.info("flex thresholds:{} size {}", fThresholds, fThresholds.size());
+
+		int maxBlockValue = fThresholds.stream()
+			.map(BrightLevel::getCount)
+			.max(Integer::compareTo).get();
 
 		Mat fBrightHistImage = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
 		int fbbin_w = Double.valueOf(hist_w / (histSize)).intValue();
-		int blockBegin = 0;
-		for (Map<Integer, Integer> block : fThresholds) {
-			for (Map.Entry<Integer, Integer> entry : block.entrySet()) {
-				Integer _threshold = entry.getKey();
-				Integer _value = entry.getValue();
-				Imgproc.rectangle(fBrightHistImage,
-					new Point(blockBegin * fbbin_w, hist_h - MathUtil.normalize(_value.doubleValue(), (double) maxBlockValue, (double) hist_h)),
-					new Point((_threshold + 1) * fbbin_w, hist_h),
-					new Scalar(170, 170, 170),
-					-1
-				);
-				blockBegin = _threshold + 1;
-			}
+		for (BrightLevel brightLevel : fThresholds) {
+			Imgproc.rectangle(fBrightHistImage,
+				new Point(
+					brightLevel.getStart() * fbbin_w,
+					hist_h - MathUtil.normalize((double) brightLevel.getCount(), (double) maxBlockValue, (double) hist_h)
+				),
+				new Point((brightLevel.getEnd() + 1) * fbbin_w, hist_h),
+				new Scalar(170, 170, 170),
+				-1
+			);
 		}
 		saveResult(fBrightHistImage.clone(), ii, step, "flex_bright_thresholds");
 
 		//MAKE LAYERS
 		Map<Integer, Mat> brightMap = new HashMap<Integer, Mat>() {{
-			for (int i = 1; i < fThresholds.size() + 1; i++) {
+			for (int i = 1; i <= fThresholds.size() + 1; i++) {
 				put(i, new Mat(srcGray.size(), srcGray.type()));
 			}
 		}};
@@ -775,18 +795,11 @@ public class PictureService {
 		for (int i = 0; i < srcGray.rows() - 1; i++) {
 			for (int j = 0; j < srcGray.cols() - 1; j++) {
 				short brightness = (short) srcGray.get(i, j)[0];
-
-				int lastThreshold = thresholds.getLast();
-				if (brightness > lastThreshold) {
-					brightMap.get(thresholds.size() + 1)
-						.put(i, j, new byte[]{(byte) brightness});
-				} else {
-					for (int k = 0; k < thresholds.size(); k++) {
-						int currThreshold = thresholds.get(k);
-						if (brightness <= currThreshold) {
-							brightMap.get(k + 1).put(i, j, new byte[]{(byte) brightness});
-							break;
-						}
+				for (int k = 0; k < fThresholds.size(); k++) {
+					BrightLevel currBrihtLevel = fThresholds.get(k);
+					if (currBrihtLevel.getStart() <= brightness && brightness <= currBrihtLevel.getEnd()) {
+						brightMap.get(k + 1).put(i, j, new byte[]{(byte) brightness});
+						break;
 					}
 				}
 			}

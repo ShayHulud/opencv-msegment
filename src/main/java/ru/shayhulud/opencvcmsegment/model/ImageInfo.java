@@ -4,14 +4,17 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.opencv.core.Mat;
-import ru.shayhulud.opencvcmsegment.model.dic.SegMethod;
 import ru.shayhulud.opencvcmsegment.common.util.DateUtils;
+import ru.shayhulud.opencvcmsegment.model.dic.SegMethod;
 
 import java.io.File;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
+/**
+ * Объект информации об изображении.
+ */
 @Data
 @AllArgsConstructor
 @NoArgsConstructor

@@ -65,7 +65,6 @@
                             <encoding>UTF-8</encoding>
                             <consoleOutput>true</consoleOutput>
                             <failsOnError>true</failsOnError>
-                            <skip>true</skip>
                         </configuration>
                         <goals>
                             <goal>check</goal>

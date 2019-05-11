@@ -22,4 +22,21 @@ public class BrightLevel implements Cloneable {
 			this.count
 		);
 	}
+
+	//TODO: Возможно расширить под диапазон.
+	public int getMeanLevel() {
+		if (this.start == this.end) {
+			return this.start;
+		}
+		int range = this.end - this.start;
+		if (range == 1) {
+			return this.start;
+		}
+		int mean = range / 2;
+		return this.start + mean;
+	}
+
+	public String getRangeString() {
+		return this.start + "-" + this.end;
+	}
 }

@@ -14,6 +14,7 @@ import org.opencv.core.MatOfInt4;
 import org.opencv.core.MatOfPoint;
 import org.opencv.core.Point;
 import org.opencv.core.Scalar;
+import org.opencv.core.Size;
 import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import ru.shayhulud.opencvcmsegment.common.behavior.CONSOLE;
@@ -32,6 +33,9 @@ import java.awt.image.DataBufferByte;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.time.Duration;
+import java.time.OffsetDateTime;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -701,7 +705,7 @@ public class PictureService {
 
 		//TODO:
 		// 2) ~сравнивать с средним по сегменту~
-		// 4) в маркеры - пиксели от среднего значения +/- % от ширины блока
+		// 4) ~в маркеры - пиксели от среднего значения~ +/- % от ширины блока
 		// 5) сравниваем самый узкий и самый высокий блок, кто из них по площади больше - тот фон.
 		//Collecting ranges
 		int blockSizeLimit = Double.valueOf(256 / depth).intValue();
@@ -772,14 +776,46 @@ public class PictureService {
 		Mat fBrightHistImage = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
 		int fbbin_w = Double.valueOf(hist_w / (histSize)).intValue();
 		for (BrightLevel brightLevel : fThresholds) {
+			double levelHeightNorm = MathUtil.normalize((double) brightLevel.getCount(), (double) maxBlockValue, (double) hist_h);
+			double levelStartNorm = brightLevel.getStart() * fbbin_w;
+			double levelEndNorm = (brightLevel.getEnd() + 1) * fbbin_w;
+
 			Imgproc.rectangle(fBrightHistImage,
-				new Point(
-					brightLevel.getStart() * fbbin_w,
-					hist_h - MathUtil.normalize((double) brightLevel.getCount(), (double) maxBlockValue, (double) hist_h)
-				),
-				new Point((brightLevel.getEnd() + 1) * fbbin_w, hist_h),
+				new Point(levelStartNorm, hist_h - levelHeightNorm),
+				new Point(levelEndNorm, hist_h),
 				new Scalar(170, 170, 170),
 				-1
+			);
+
+			double fontScale = 1;
+			int fontFace = Core.FONT_HERSHEY_SCRIPT_SIMPLEX;
+			int thickness = 3;
+
+			Size textSize = Imgproc.getTextSize(
+				brightLevel.getRangeString(), fontFace, fontScale, thickness, new int[]{0}
+			);
+
+			double textLevelRatio = textSize.width / (levelEndNorm - levelStartNorm);
+			fontScale = textLevelRatio > 1 ? 1 / textLevelRatio : 1;
+
+			//Рисуем там, где умещается.
+			if (fontScale < 0.5) {
+				continue;
+			}
+
+			if (0.5 <= fontScale && fontScale < 1) {
+				thickness = 1;
+				textSize = Imgproc.getTextSize(
+					brightLevel.getRangeString(), fontFace, fontScale, thickness, new int[]{0}
+				);
+			}
+
+			Imgproc.putText(fBrightHistImage, brightLevel.getRangeString(),
+				new Point(
+					levelStartNorm + (levelEndNorm - levelStartNorm) / 2 - textSize.width / 2,
+					hist_h - levelHeightNorm / 2
+				),
+				fontFace, fontScale, Scalar.all(255), thickness
 			);
 		}
 		saveResult(fBrightHistImage.clone(), ii, step, "flex_bright_thresholds");
@@ -796,8 +832,10 @@ public class PictureService {
 			for (int j = 0; j < srcGray.cols() - 1; j++) {
 				short brightness = (short) srcGray.get(i, j)[0];
 				for (int k = 0; k < fThresholds.size(); k++) {
-					BrightLevel currBrihtLevel = fThresholds.get(k);
-					if (currBrihtLevel.getStart() <= brightness && brightness <= currBrihtLevel.getEnd()) {
+
+					BrightLevel currBrightLevel = fThresholds.get(k);
+					int mean = currBrightLevel.getMeanLevel();
+					if (brightness == mean) {
 						brightMap.get(k + 1).put(i, j, new byte[]{(byte) brightness});
 						break;
 					}
@@ -812,87 +850,91 @@ public class PictureService {
 			saveResult(_mat.clone(), ii, step, "level_" + _idx + "_of_depth");
 		}
 
-		++step;
-		Integer openMaskSize = this.calculateSizeOfSquareBlurMask(src);
+		//FILTER EMPTY OR LOW VALUED LEVELS
+		Map<Integer, Mat> filteredBrightMap = new HashMap<>();
 		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
 			Integer _idx = entry.getKey();
 			Mat _mat = entry.getValue();
-			Imgproc.erode(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
-			Imgproc.dilate(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
-			saveResult(_mat.clone(), ii, step, "open_of_level_" + _idx + "_of_depth");
+			int count = 0;
+			for (int i = 0; i < _mat.rows() - 1; i++) {
+				if (count == 0) {
+					for (int j = 0; j < _mat.cols() - 1; j++) {
+						short brightness = (short) _mat.get(i, j)[0];
+						if (brightness > 0) {
+							count++;
+							filteredBrightMap.put(_idx, _mat);
+							break;
+						}
+					}
+				}
+			}
 		}
+		brightMap = filteredBrightMap;
+
+//		++step;
+//		Integer openMaskSize = this.calculateSizeOfSquareBlurMask(src);
+//		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
+//			Integer _idx = entry.getKey();
+//			Mat _mat = entry.getValue();
+//			Imgproc.erode(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
+//			Imgproc.dilate(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
+//			saveResult(_mat.clone(), ii, step, "open_of_level_" + _idx + "_of_depth");
+//		}
 
 		//WSHED
 		++step;
-		List<Mat> singledMarkers = new LinkedList<>();
+		Map<Integer, Mat> singledMarkers = new HashMap<>();
 		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
 			Integer _idx = entry.getKey();
 			Mat _mat = entry.getValue();
 			log.info("Processing level {} markers ...", _idx);
+			OffsetDateTime start = OffsetDateTime.now();
 
 			List<MatOfPoint> contours = new ArrayList<>();
 			MatOfInt4 hierarchy = new MatOfInt4();
 			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_NONE);
 
 			Mat markers = Mat.zeros(_mat.size(), CvType.CV_32S);
-			List<Mat> singleLayerMarkers = new LinkedList<>();
-			Integer percentOfImage = calculatePercentAreaOfImage(_mat, 2.5);
-
 			for (int i = 0; i < contours.size(); i++) {
-				Double markerSize = Imgproc.contourArea(contours.get(i));
-				if (markerSize < percentOfImage) {
-					continue;
-				}
-
-				Mat marker = Mat.zeros(_mat.size(), CvType.CV_32S);
-				Imgproc.drawContours(marker, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
-
-				//TODO: Сделать уменьшение областей до точек, линий. При уменьшении точно отпадет смысл сортировки маркеров по размеру.
-				Mat _eroded = Mat.zeros(srcGray.size(), srcGray.type());
-				marker.convertTo(_eroded, _eroded.type());
-				Imgproc.erode(_eroded, _eroded, Mat.ones(3, 3, marker.type()));
-
-				_eroded.clone().convertTo(_eroded, CvType.CV_32S);
-				Core.add(markers, _eroded, markers);
-				singleLayerMarkers.add(_eroded);
+				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
 			}
-			saveResult(markers.clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 10000);
-			Mat dst = this.watershed(src, markers, contours.size());
-			saveResult(dst.clone(), ii, step, "result_of_level_" + _idx + "_of_depth");
 
-			//TODO: Сделать замену не в каждом, а в склейке, реализовать сортировку слоёв по количеству. причем наврено сначала сортировку, а потом замену, чтобы было лучше для алгоритма (но это не точно)
-			//Change value for layer _indx
-			for (Mat singleMat : singleLayerMarkers) {
-				for (int i = 0; i < singleMat.rows(); i++) {
-					for (int j = 0; j < singleMat.cols(); j++) {
-						double[] indexes = singleMat.get(i, j);
-						int index = (int) indexes[0];
-						if (index > 0) {
-							indexes[0] = _idx;
-							singleMat.put(i, j, indexes);
-						}
+			saveResult(markers.clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 10000);
+
+			for (int i = 0; i < markers.rows(); i++) {
+				for (int j = 0; j < markers.cols(); j++) {
+					double[] indexes = markers.get(i, j);
+					int index = (int) indexes[0];
+					if (index > 0) {
+						indexes[0] = _idx;
+						markers.put(i, j, indexes);
 					}
 				}
 			}
+			singledMarkers.put(_idx, markers);
 
-			singledMarkers.addAll(singleLayerMarkers);
-
-			log.info("...complete");
+			OffsetDateTime stop = OffsetDateTime.now();
+			Duration period = Duration.between(start, stop);
+			log.info(
+				"...completed in {} min {} sec {} mills",
+				period.get(ChronoUnit.SECONDS) / 60,
+				period.get(ChronoUnit.SECONDS) % 60,
+				period.get(ChronoUnit.NANOS) / 1000000
+			);
 		}
 
-		//sort by size
-//		singledMarkers = singledMarkers.stream()
-//			.sorted(Comparator.comparingDouble(Imgproc::contourArea))
-//			.collect(Collectors.toList());
-
-		//TODO: покрасить маркеры каждого слоя в свой цвет.
-		Mat wshedMarkSumm = new Mat(src.size(), CvType.CV_32S);
-		for (Mat marker : singledMarkers) {
-			Core.add(wshedMarkSumm, marker, wshedMarkSumm);
+		Mat wshedMarkSumm = singledMarkers.entrySet().stream().findAny().get().getValue().clone();
+		for (Map.Entry<Integer, Mat> entry : singledMarkers.entrySet()) {
+			Mat _markers = entry.getValue();
+			Core.add(wshedMarkSumm, _markers, wshedMarkSumm);
 		}
-		saveResult(wshedMarkSumm.clone(), ii, ++step, "markers_summ_eroded_markers", 10000);
-		Mat dst = this.watershed(src, wshedMarkSumm, depth);
-		saveResult(dst.clone(), ii, ++step, "result_summ_eroded_markers");
+		saveResult(wshedMarkSumm.clone(), ii, ++step, "markers_summ", 10000);
+
+		Mat coloredMarkers = colorByIndexes(wshedMarkSumm.clone(), singledMarkers.size());
+		saveResult(coloredMarkers.clone(), ii, ++step, "colored_markers_summ");
+
+		Mat dst = this.watershed(src, wshedMarkSumm, singledMarkers.size());
+		saveResult(dst.clone(), ii, ++step, "result_markers_summ");
 
 		return ii;
 	}
@@ -930,7 +972,10 @@ public class PictureService {
 
 	public Mat watershed(Mat src, Mat markers, Integer depth) {
 		Imgproc.watershed(src, markers);
+		return colorByIndexes(markers, depth);
+	}
 
+	private Mat colorByIndexes(Mat markers, Integer depth) {
 		List<byte[]> colors = new ArrayList<>();
 		for (int i = 0; i < depth; i++) {
 			colors.add(generateBGRColor());

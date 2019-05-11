@@ -1,4 +1,4 @@
-package ru.shayhulud.opencvcmsegment.util;
+package ru.shayhulud.opencvcmsegment.common.util;
 
 import lombok.extern.slf4j.Slf4j;
 
@@ -7,7 +7,8 @@ import lombok.extern.slf4j.Slf4j;
  */
 @Slf4j
 public final class PixelUtil {
-	public PixelUtil() {
+
+	private PixelUtil() {
 	}
 
 	public static boolean checkPixelRGB(byte[] pixel, int r, int g, int b) {

@@ -3,7 +3,13 @@ package ru.shayhulud.opencvcmsegment;
 import nu.pattern.OpenCV;
 import ru.shayhulud.opencvcmsegment.service.PictureService;
 
-public class App {
+/**
+ * Main для консольного запуска.
+ */
+public final class App {
+
+	private App() {
+	}
 
 	public static void main(String[] args) {
 		OpenCV.loadLocally();

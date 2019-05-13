@@ -25,6 +25,7 @@ import ru.shayhulud.opencvcmsegment.common.util.PixelUtil;
 import ru.shayhulud.opencvcmsegment.exceptions.WrongMatBodyLengthException;
 import ru.shayhulud.opencvcmsegment.model.BrightLevel;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
+import ru.shayhulud.opencvcmsegment.model.MarkerMap;
 import ru.shayhulud.opencvcmsegment.model.Result;
 import ru.shayhulud.opencvcmsegment.model.dic.SegMethod;
 
@@ -614,6 +615,9 @@ public class PictureService {
 	}
 
 	public ImageInfo notConnectedMarkers(ImageInfo ii, Integer depth) {
+
+		OffsetDateTime startAlgTime = OffsetDateTime.now();
+
 		int step = 0;
 		ii.setMethod(SegMethod.NOT_CONNECTED_MARKERS);
 		Mat src = ii.getMat().clone();
@@ -820,41 +824,47 @@ public class PictureService {
 		}
 		saveResult(fBrightHistImage.clone(), ii, step, "flex_bright_thresholds");
 
+		//SHOW BRIGHTS LVEVEL
+
 		//MAKE LAYERS
-		Map<Integer, Mat> brightMap = new HashMap<Integer, Mat>() {{
-			for (int i = 1; i <= fThresholds.size() + 1; i++) {
-				put(i, new Mat(srcGray.size(), srcGray.type()));
-			}
-		}};
+		++step;
+		List<MarkerMap> markerMaps = new LinkedList<>();
+		for (int i = 0; i < fThresholds.size(); i++) {
+			MarkerMap mm = new MarkerMap(i + 1, fThresholds.get(i), srcGray.size(), srcGray.type());
+			markerMaps.add(mm);
+		}
 
 		//ALLOCATE TO LAYERS
 		for (int i = 0; i < srcGray.rows() - 1; i++) {
 			for (int j = 0; j < srcGray.cols() - 1; j++) {
 				short brightness = (short) srcGray.get(i, j)[0];
-				for (int k = 0; k < fThresholds.size(); k++) {
-
-					BrightLevel currBrightLevel = fThresholds.get(k);
+				for (int k = 0; k < markerMaps.size(); k++) {
+					MarkerMap markerMap = markerMaps.get(k);
+					BrightLevel currBrightLevel = markerMap.getBrightLevel();
+					if (currBrightLevel.getStart() <= brightness && brightness <= currBrightLevel.getEnd()) {
+						markerMap.getAllLevel().put(i, j, new byte[]{(byte) brightness});
+						markerMap.incrementAllLevelCount();
+					}
 					int mean = currBrightLevel.getMeanLevel();
 					if (brightness == mean) {
-						brightMap.get(k + 1).put(i, j, new byte[]{(byte) brightness});
+						markerMap.getMeanLevel().put(i, j, new byte[]{(byte) brightness});
+						markerMap.incrementMeanLevelCount();
 						break;
 					}
 				}
 			}
 		}
 
-		++step;
-		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
-			Integer _idx = entry.getKey();
-			Mat _mat = entry.getValue();
-			saveResult(_mat.clone(), ii, step, "level_" + _idx + "_of_depth");
+		for (MarkerMap markerMap : markerMaps) {
+			int _idx = markerMap.getIdx();
+			saveResult(markerMap.getAllLevel().clone(), ii, step, "level_" + _idx + "_of_depth");
+			saveResult(markerMap.getMeanLevel().clone(), ii, step, "mean_level_" + _idx + "_of_depth", 10000);
 		}
 
 		//FILTER EMPTY OR LOW VALUED LEVELS
-		Map<Integer, Mat> filteredBrightMap = new HashMap<>();
-		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
-			Integer _idx = entry.getKey();
-			Mat _mat = entry.getValue();
+		List<MarkerMap> filteredMarkerMaps = new LinkedList<>();
+		for (MarkerMap markerMap : markerMaps) {
+			Mat _mat = markerMap.getMeanLevel();
 			int count = 0;
 			for (int i = 0; i < _mat.rows() - 1; i++) {
 				if (count == 0) {
@@ -862,34 +872,23 @@ public class PictureService {
 						short brightness = (short) _mat.get(i, j)[0];
 						if (brightness > 0) {
 							count++;
-							filteredBrightMap.put(_idx, _mat);
+							filteredMarkerMaps.add(markerMap);
 							break;
 						}
 					}
 				}
 			}
 		}
-		brightMap = filteredBrightMap;
-
-//		++step;
-//		Integer openMaskSize = this.calculateSizeOfSquareBlurMask(src);
-//		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
-//			Integer _idx = entry.getKey();
-//			Mat _mat = entry.getValue();
-//			Imgproc.erode(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
-//			Imgproc.dilate(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
-//			saveResult(_mat.clone(), ii, step, "open_of_level_" + _idx + "_of_depth");
-//		}
+		markerMaps = filteredMarkerMaps;
 
 		//WSHED
 		++step;
-		Map<Integer, Mat> singledMarkers = new HashMap<>();
-		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
-			Integer _idx = entry.getKey();
-			Mat _mat = entry.getValue();
+		for (MarkerMap markerMap : markerMaps) {
+			Integer _idx = markerMap.getIdx();
+			Mat _mat = markerMap.getMeanLevel();
 			log.info("Processing level {} markers ...", _idx);
-			OffsetDateTime start = OffsetDateTime.now();
 
+			OffsetDateTime startLevelProcessingTime = OffsetDateTime.now();
 			List<MatOfPoint> contours = new ArrayList<>();
 			MatOfInt4 hierarchy = new MatOfInt4();
 			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_NONE);
@@ -908,33 +907,46 @@ public class PictureService {
 					if (index > 0) {
 						indexes[0] = _idx;
 						markers.put(i, j, indexes);
+						markerMap.incrementMarkerLevelCount();
 					}
 				}
 			}
-			singledMarkers.put(_idx, markers);
+			markerMap.setMarker(markers);
 
-			OffsetDateTime stop = OffsetDateTime.now();
-			Duration period = Duration.between(start, stop);
-			log.info(
-				"...completed in {} min {} sec {} mills",
-				period.get(ChronoUnit.SECONDS) / 60,
-				period.get(ChronoUnit.SECONDS) % 60,
-				period.get(ChronoUnit.NANOS) / 1000000
-			);
+			OffsetDateTime stopLevelProcessingTime = OffsetDateTime.now();
+			Duration period = Duration.between(startLevelProcessingTime, stopLevelProcessingTime);
+			markerMap.setMarkerDuration(period);
+			log.info("...done");
 		}
 
-		Mat wshedMarkSumm = singledMarkers.entrySet().stream().findAny().get().getValue().clone();
-		for (Map.Entry<Integer, Mat> entry : singledMarkers.entrySet()) {
-			Mat _markers = entry.getValue();
-			Core.add(wshedMarkSumm, _markers, wshedMarkSumm);
+		for (MarkerMap mm : markerMaps) {
+			log.info("{}", mm.stats());
+		}
+
+		Mat wshedMarkSumm = markerMaps.get(0).getMarker().clone();
+		if (markerMaps.size() > 1) {
+			for (int i = 1; i < markerMaps.size(); i++) {
+				MarkerMap markerMap = markerMaps.get(i);
+				Core.add(wshedMarkSumm, markerMap.getMarker(), wshedMarkSumm);
+			}
 		}
 		saveResult(wshedMarkSumm.clone(), ii, ++step, "markers_summ", 10000);
 
-		Mat coloredMarkers = colorByIndexes(wshedMarkSumm.clone(), singledMarkers.size());
+		Mat coloredMarkers = colorByIndexes(wshedMarkSumm.clone(), markerMaps.size());
 		saveResult(coloredMarkers.clone(), ii, ++step, "colored_markers_summ");
 
-		Mat dst = this.watershed(src, wshedMarkSumm, singledMarkers.size());
+		Mat dst = this.watershed(src, wshedMarkSumm, markerMaps.size());
 		saveResult(dst.clone(), ii, ++step, "result_markers_summ");
+
+		OffsetDateTime stopAlgTime = OffsetDateTime.now();
+		Duration period = Duration.between(startAlgTime, stopAlgTime);
+		log.info(
+			"{} alg completed in {} min {} sec {} mills",
+			SegMethod.NOT_CONNECTED_MARKERS,
+			period.get(ChronoUnit.SECONDS) / 60,
+			period.get(ChronoUnit.SECONDS) % 60,
+			period.get(ChronoUnit.NANOS) / 1000000
+		);
 
 		return ii;
 	}

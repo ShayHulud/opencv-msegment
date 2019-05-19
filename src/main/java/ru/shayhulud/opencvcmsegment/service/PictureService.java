@@ -353,6 +353,11 @@ public class PictureService {
 		//saveImage(dst, ii, COLOR_METHOD, ++step, "result");
 		saveResult(dst.clone(), ii, ++step, "result");
 
+		Mat bwResult = new Mat();
+		Imgproc.cvtColor(dst, bwResult, Imgproc.COLOR_BGR2GRAY);
+		bwResult.convertTo(bwResult, CvType.CV_8U);
+		saveResult(bwResult.clone(), ii, ++step, "bw_result");
+
 		return ii;
 	}
 
@@ -475,6 +480,11 @@ public class PictureService {
 		Mat dst = this.watershed(src, markers, ii.getDepth());
 		//saveImage(dst, ii, SHAPE_METHOD, ++step, "result");
 		saveResult(dst.clone(), ii, ++step, "result");
+
+		Mat bwResult = new Mat();
+		Imgproc.cvtColor(dst, bwResult, Imgproc.COLOR_BGR2GRAY);
+		bwResult.convertTo(bwResult, CvType.CV_8U);
+		saveResult(bwResult.clone(), ii, ++step, "bw_result");
 
 		return ii;
 	}
@@ -606,6 +616,11 @@ public class PictureService {
 		wshedMarkSumm.convertTo(wshedMarkSumm, CvType.CV_32S);
 		Mat dst = this.watershed(src, wshedMarkSumm, contours.size());
 		saveResult(dst.clone(), ii, ++step, "result_summ_eroded_markers");
+
+		Mat bwResult = new Mat();
+		Imgproc.cvtColor(dst, bwResult, Imgproc.COLOR_BGR2GRAY);
+		bwResult.convertTo(bwResult, CvType.CV_8U);
+		saveResult(bwResult.clone(), ii, ++step, "bw_result_markers_summ");
 
 		//GRABCUT
 		//TODO: make grabcut
@@ -937,6 +952,11 @@ public class PictureService {
 
 		Mat dst = this.watershed(src, wshedMarkSumm, markerMaps.size());
 		saveResult(dst.clone(), ii, ++step, "result_markers_summ");
+
+		Mat bwResult = new Mat();
+		Imgproc.cvtColor(dst, bwResult, Imgproc.COLOR_BGR2GRAY);
+		bwResult.convertTo(bwResult, CvType.CV_8U);
+		saveResult(bwResult.clone(), ii, ++step, "bw_result_markers_summ");
 
 		OffsetDateTime stopAlgTime = OffsetDateTime.now();
 		Duration period = Duration.between(startAlgTime, stopAlgTime);

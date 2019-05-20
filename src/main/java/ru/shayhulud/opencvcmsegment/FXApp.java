@@ -10,6 +10,7 @@ import javafx.geometry.Orientation;
 import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.ChoiceBox;
 import javafx.scene.control.Label;
 import javafx.scene.control.Separator;
@@ -31,10 +32,12 @@ import ru.shayhulud.opencvcmsegment.common.util.CollectionUtil;
 import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.Result;
+import ru.shayhulud.opencvcmsegment.model.dic.PreProcessMethods;
 import ru.shayhulud.opencvcmsegment.service.PictureService;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.stream.Collectors;
 
 /**
@@ -149,6 +152,22 @@ public class FXApp extends Application {
 		TextField depthCountInput = new TextField();
 		depthCountInput.setPromptText("1");
 		depthCountInput.getStyleClass().addAll("select-control");
+		Separator vParamSeparator_1 = new Separator(Orientation.VERTICAL);
+		Label filterMaskSizeParamLabel = new Label("Mask size:");
+		TextField medianFilterMaskSizeInput = new TextField();
+		medianFilterMaskSizeInput.setPromptText("3");
+		medianFilterMaskSizeInput.getStyleClass().addAll("select-control");
+
+		//Separator
+		Separator iiSelectSeparator_4 = new Separator();
+		iiSelectSeparator_4.setOrientation(Orientation.HORIZONTAL);
+		iiSelectSeparator_4.getStyleClass().addAll("separator");
+
+		//PREPROC
+		HBox preprocBox = new HBox();
+		Label preprocMedianLabel = new Label("Median blur:");
+		CheckBox preprocMedianCB = new CheckBox();
+		Separator vPreprocSeparator_1 = new Separator(Orientation.VERTICAL);
 
 		//MENU-RIGHT
 		VBox outputMenuBox = new VBox();
@@ -212,7 +231,9 @@ public class FXApp extends Application {
 			iiSelectSeparator_2,
 			algorythmsSelectBox,
 			iiSelectSeparator_3,
-			paramsBox
+			paramsBox,
+			iiSelectSeparator_4,
+			preprocBox
 		);
 		imageSelectBox.getChildren().addAll(
 			iiSelectLabel,
@@ -233,7 +254,15 @@ public class FXApp extends Application {
 		);
 		paramsBox.getChildren().addAll(
 			depthParamLabel,
-			depthCountInput
+			depthCountInput,
+			vParamSeparator_1,
+			filterMaskSizeParamLabel,
+			medianFilterMaskSizeInput
+		);
+		preprocBox.getChildren().addAll(
+			preprocMedianLabel,
+			preprocMedianCB,
+			vPreprocSeparator_1
 		);
 		//OUTPUT MENU
 		outputMenuBox.getChildren().addAll(outputSelectBox);
@@ -369,7 +398,14 @@ public class FXApp extends Application {
 						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
 						FXApp.this.toAlgorythmsImage = pictureService.notConnectedMarkers(
 							FXApp.this.toAlgorythmsImage,
-							Integer.parseInt(depthCountInput.getText())
+							Integer.parseInt(depthCountInput.getText()),
+							Integer.parseInt(medianFilterMaskSizeInput.getText()),
+							//TODO: сделать сет в классе и изменять его по чекбоксам.
+							preprocMedianCB.isSelected() ?
+								new HashSet<PreProcessMethods>() {{
+									add(PreProcessMethods.MEDIAN_BLUR);
+								}}
+								: new HashSet<>()
 						);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
 							FXApp.this.toAlgorythmsImage.getResults().stream()
@@ -483,12 +519,37 @@ public class FXApp extends Application {
 			}
 		});
 
+		medianFilterMaskSizeInput.textProperty().addListener(new ChangeListener<String>() {
+			@Override
+			public void changed(ObservableValue<? extends String> observable, String oldValue,
+			                    String newValue) {
+				if (!newValue.matches("\\d*")) {
+					newValue = newValue.replaceAll("[^\\d]", "");
+				}
+				if (newValue.equals("")) {
+					medianFilterMaskSizeInput.setText(newValue);
+					return;
+				}
+				int newIntValue = Integer.parseInt(newValue);
+				if (newIntValue < 1) {
+					newIntValue = 1;
+					newValue = Integer.toString(newIntValue);
+				}
+				if (newIntValue > 11) {
+					newIntValue = 11;
+					newValue = Integer.toString(newIntValue);
+				}
+				medianFilterMaskSizeInput.setText(newValue);
+			}
+		});
+
 		//----------------------//
 		//---SET START CONTENT--//
 		//----------------------//
 
 		configureFileChooser(fileChooser);
 		depthCountInput.setText(Integer.toString(4));
+		medianFilterMaskSizeInput.setText(Integer.toString(3));
 
 		//----------------------//
 		//---------SHOW---------//

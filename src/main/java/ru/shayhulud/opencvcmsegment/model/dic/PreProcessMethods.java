@@ -9,6 +9,10 @@ public enum PreProcessMethods {
 	 */
 	MEDIAN_BLUR,
 	/**
+	 * Билатериальный
+	 */
+	BILATERIAL,
+	/**
 	 * Мегапиксели.
 	 */
 	SUPERPIXELS

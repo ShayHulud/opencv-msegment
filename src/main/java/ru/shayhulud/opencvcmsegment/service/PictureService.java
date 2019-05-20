@@ -27,6 +27,7 @@ import ru.shayhulud.opencvcmsegment.model.BrightLevel;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.MarkerMap;
 import ru.shayhulud.opencvcmsegment.model.Result;
+import ru.shayhulud.opencvcmsegment.model.dic.PreProcessMethods;
 import ru.shayhulud.opencvcmsegment.model.dic.SegMethod;
 
 import java.awt.image.BufferedImage;
@@ -44,6 +45,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
 
 /**
  * Picture processing service.
@@ -629,7 +631,7 @@ public class PictureService {
 		return ii;
 	}
 
-	public ImageInfo notConnectedMarkers(ImageInfo ii, Integer depth) {
+	public ImageInfo notConnectedMarkers(ImageInfo ii, Integer depth, Integer filterMaskSize, Set<PreProcessMethods> preprocMethods) {
 
 		OffsetDateTime startAlgTime = OffsetDateTime.now();
 
@@ -640,10 +642,11 @@ public class PictureService {
 		Mat srcGray = new Mat();
 		Imgproc.cvtColor(src, srcGray, Imgproc.COLOR_BGR2GRAY);
 		srcGray.convertTo(srcGray, CvType.CV_8U);
-		Integer medianmaskBlurSize = this.calculateSizeOfSquareBlurMask(srcGray);
-		//K<=16
-		Imgproc.medianBlur(srcGray, srcGray, medianmaskBlurSize);
-		saveResult(srcGray.clone(), ii, ++step, "blured_by_" + medianmaskBlurSize + "x" + medianmaskBlurSize);
+		if (preprocMethods.contains(PreProcessMethods.MEDIAN_BLUR)) {
+			//K<=16
+			Imgproc.medianBlur(srcGray, srcGray, filterMaskSize);
+			saveResult(srcGray.clone(), ii, ++step, "blured_by_" + filterMaskSize + "x" + filterMaskSize);
+		}
 
 		log.info("srcGray type of: {}; channels: {}", srcGray.type(), srcGray.channels());
 

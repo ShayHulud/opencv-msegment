@@ -32,12 +32,13 @@ import ru.shayhulud.opencvcmsegment.common.util.CollectionUtil;
 import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.Result;
-import ru.shayhulud.opencvcmsegment.model.dic.PreProcessMethods;
+import ru.shayhulud.opencvcmsegment.model.dic.AlgorythmOptions;
 import ru.shayhulud.opencvcmsegment.service.PictureService;
 
 import java.io.File;
 import java.io.IOException;
 import java.util.HashSet;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -67,6 +68,11 @@ public class FXApp extends Application {
 	 * Холст для ручных маркеров.
 	 */
 	public WritableImage handMarkers;
+
+	/**
+	 * Сет опций.
+	 */
+	public final Set<AlgorythmOptions> preProcessOptions = new HashSet<>();
 
 	@Override
 	public void start(Stage stage) {
@@ -165,9 +171,16 @@ public class FXApp extends Application {
 
 		//PREPROC
 		HBox preprocBox = new HBox();
+		//TODO: Слайдер для переключения типов фильтров.
 		Label preprocMedianLabel = new Label("Median blur:");
 		CheckBox preprocMedianCB = new CheckBox();
 		Separator vPreprocSeparator_1 = new Separator(Orientation.VERTICAL);
+		Label preprocBilaterialLabel = new Label("Bilaterial blur:");
+		CheckBox preprocBilaterialCB = new CheckBox();
+		Separator vPreprocSeparator_2 = new Separator(Orientation.VERTICAL);
+		Label preprocDiaplLabel = new Label("Diap Selection:");
+		CheckBox preprocDiapCB = new CheckBox();
+		Separator vPreprocSeparator_3 = new Separator(Orientation.VERTICAL);
 
 		//MENU-RIGHT
 		VBox outputMenuBox = new VBox();
@@ -262,7 +275,13 @@ public class FXApp extends Application {
 		preprocBox.getChildren().addAll(
 			preprocMedianLabel,
 			preprocMedianCB,
-			vPreprocSeparator_1
+			vPreprocSeparator_1,
+			preprocBilaterialLabel,
+			preprocBilaterialCB,
+			vPreprocSeparator_2,
+			preprocDiaplLabel,
+			preprocDiapCB,
+			vPreprocSeparator_3
 		);
 		//OUTPUT MENU
 		outputMenuBox.getChildren().addAll(outputSelectBox);
@@ -400,12 +419,7 @@ public class FXApp extends Application {
 							FXApp.this.toAlgorythmsImage,
 							Integer.parseInt(depthCountInput.getText()),
 							Integer.parseInt(medianFilterMaskSizeInput.getText()),
-							//TODO: сделать сет в классе и изменять его по чекбоксам.
-							preprocMedianCB.isSelected() ?
-								new HashSet<PreProcessMethods>() {{
-									add(PreProcessMethods.MEDIAN_BLUR);
-								}}
-								: new HashSet<>()
+							FXApp.this.preProcessOptions
 						);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
 							FXApp.this.toAlgorythmsImage.getResults().stream()
@@ -413,6 +427,45 @@ public class FXApp extends Application {
 								.collect(Collectors.toList())
 						));
 						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
+					}
+				}
+			}
+		);
+
+		preprocDiapCB.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (preprocDiapCB.isSelected()) {
+						FXApp.this.preProcessOptions.add(AlgorythmOptions.GISTO_DIAP);
+					} else {
+						FXApp.this.preProcessOptions.remove(AlgorythmOptions.GISTO_DIAP);
+					}
+				}
+			}
+		);
+
+		preprocMedianCB.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (preprocMedianCB.isSelected()) {
+						FXApp.this.preProcessOptions.add(AlgorythmOptions.MEDIAN_BLUR);
+					} else {
+						FXApp.this.preProcessOptions.remove(AlgorythmOptions.MEDIAN_BLUR);
+					}
+				}
+			}
+		);
+
+		preprocBilaterialCB.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (preprocBilaterialCB.isSelected()) {
+						FXApp.this.preProcessOptions.add(AlgorythmOptions.BILATERIAL);
+					} else {
+						FXApp.this.preProcessOptions.remove(AlgorythmOptions.BILATERIAL);
 					}
 				}
 			}

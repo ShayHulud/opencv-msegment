@@ -27,7 +27,7 @@ import ru.shayhulud.opencvcmsegment.model.BrightLevel;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.MarkerMap;
 import ru.shayhulud.opencvcmsegment.model.Result;
-import ru.shayhulud.opencvcmsegment.model.dic.PreProcessMethods;
+import ru.shayhulud.opencvcmsegment.model.dic.AlgorythmOptions;
 import ru.shayhulud.opencvcmsegment.model.dic.SegMethod;
 
 import java.awt.image.BufferedImage;
@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Random;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Picture processing service.
@@ -631,7 +632,7 @@ public class PictureService {
 		return ii;
 	}
 
-	public ImageInfo notConnectedMarkers(ImageInfo ii, Integer depth, Integer filterMaskSize, Set<PreProcessMethods> preprocMethods) {
+	public ImageInfo notConnectedMarkers(ImageInfo ii, Integer depth, Integer filterMaskSize, Set<AlgorythmOptions> options) {
 
 		OffsetDateTime startAlgTime = OffsetDateTime.now();
 
@@ -642,10 +643,17 @@ public class PictureService {
 		Mat srcGray = new Mat();
 		Imgproc.cvtColor(src, srcGray, Imgproc.COLOR_BGR2GRAY);
 		srcGray.convertTo(srcGray, CvType.CV_8U);
-		if (preprocMethods.contains(PreProcessMethods.MEDIAN_BLUR)) {
+		if (options.contains(AlgorythmOptions.MEDIAN_BLUR)) {
 			//K<=16
 			Imgproc.medianBlur(srcGray, srcGray, filterMaskSize);
-			saveResult(srcGray.clone(), ii, ++step, "blured_by_" + filterMaskSize + "x" + filterMaskSize);
+			saveResult(srcGray.clone(), ii, ++step,
+				"blured_by_" + filterMaskSize + "x" + filterMaskSize + "_" + AlgorythmOptions.MEDIAN_BLUR.name());
+		} else if (options.contains(AlgorythmOptions.BILATERIAL)) {
+			Mat dst = new Mat();
+			Imgproc.bilateralFilter(srcGray, dst, filterMaskSize, filterMaskSize * 2, filterMaskSize * 2);
+			saveResult(dst.clone(), ii, ++step,
+				"blured_by_" + filterMaskSize + "x" + filterMaskSize + "_" + AlgorythmOptions.BILATERIAL.name());
+			dst.convertTo(srcGray, CvType.CV_8U);
 		}
 
 		log.info("srcGray type of: {}; channels: {}", srcGray.type(), srcGray.channels());
@@ -863,11 +871,23 @@ public class PictureService {
 						markerMap.getAllLevel().put(i, j, new byte[]{(byte) brightness});
 						markerMap.incrementAllLevelCount();
 					}
-					int mean = currBrightLevel.getMeanLevel();
-					if (brightness == mean) {
-						markerMap.getMeanLevel().put(i, j, new byte[]{(byte) brightness});
-						markerMap.incrementMeanLevelCount();
-						break;
+
+					if (options.contains(AlgorythmOptions.GISTO_DIAP)) {
+						//TODO: Сделать вводимым/дефолтным.
+						int diapRange = 3;
+						BrightLevel meanDiap = currBrightLevel.getMeanDiap(diapRange);
+						if (meanDiap.getStart() <= brightness && brightness <= meanDiap.getEnd()) {
+							markerMap.getMeanLevel().put(i, j, new byte[]{(byte) brightness});
+							markerMap.incrementMeanLevelCount();
+							break;
+						}
+					} else {
+						int mean = currBrightLevel.getMeanLevel();
+						if (brightness == mean) {
+							markerMap.getMeanLevel().put(i, j, new byte[]{(byte) brightness});
+							markerMap.incrementMeanLevelCount();
+							break;
+						}
 					}
 				}
 			}
@@ -913,7 +933,7 @@ public class PictureService {
 
 			Mat markers = Mat.zeros(_mat.size(), CvType.CV_32S);
 			for (int i = 0; i < contours.size(); i++) {
-				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
+				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), 1, 8, hierarchy, Integer.MAX_VALUE, new Point());
 			}
 
 			saveResult(markers.clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 10000);
@@ -954,12 +974,16 @@ public class PictureService {
 		saveResult(coloredMarkers.clone(), ii, ++step, "colored_markers_summ");
 
 		Mat dst = this.watershed(src, wshedMarkSumm, markerMaps.size());
-		saveResult(dst.clone(), ii, ++step, "result_markers_summ");
+
+		String resultOptions = options.stream().map(AlgorythmOptions::name).collect(Collectors.joining("_"));
+		saveResult(dst.clone(), ii, ++step,
+			"result_markers_summ_" + resultOptions);
 
 		Mat bwResult = new Mat();
 		Imgproc.cvtColor(dst, bwResult, Imgproc.COLOR_BGR2GRAY);
 		bwResult.convertTo(bwResult, CvType.CV_8U);
-		saveResult(bwResult.clone(), ii, ++step, "bw_result_markers_summ");
+		saveResult(bwResult.clone(), ii, ++step,
+			"bw_result_markers_summ_" + resultOptions);
 
 		OffsetDateTime stopAlgTime = OffsetDateTime.now();
 		Duration period = Duration.between(startAlgTime, stopAlgTime);

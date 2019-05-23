@@ -36,6 +36,25 @@ public class BrightLevel implements Cloneable {
 		return this.start + mean;
 	}
 
+	public BrightLevel getMeanDiap(int range) {
+		BrightLevel meanDiap = new BrightLevel();
+		int actualDiametr = this.end - this.start;
+		if (actualDiametr <= range * 2) {
+			meanDiap.setStart(this.start);
+			meanDiap.setEnd(this.end);
+			meanDiap.setCount(this.count);
+			return meanDiap;
+		}
+
+		int mean = this.getMeanLevel();
+		int nStart = mean - range < this.start ? mean - range + 1 : mean - range;
+		meanDiap.setStart(nStart);
+		int nEnd = mean + range > this.end ? mean + range - 1 : mean + range;
+		meanDiap.setEnd(nEnd);
+		meanDiap.setCount(nEnd - nStart + 1);
+		return meanDiap;
+	}
+
 	public String getRangeString() {
 		return this.start + "-" + this.end;
 	}

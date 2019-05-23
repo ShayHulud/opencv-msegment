@@ -3,7 +3,7 @@ package ru.shayhulud.opencvcmsegment.model.dic;
 /**
  * Методы предобработки.
  */
-public enum PreProcessMethods {
+public enum AlgorythmOptions {
 	/**
 	 * Медианный фильтр.
 	 */
@@ -13,7 +13,15 @@ public enum PreProcessMethods {
 	 */
 	BILATERIAL,
 	/**
-	 * Мегапиксели.
+	 * Суперпиксели.
 	 */
-	SUPERPIXELS
+	SUPERPIXELS,
+	/**
+	 * Выборка диапазона из гистограммы.
+	 */
+	GISTO_DIAP,
+	/**
+	 * Нужен ч/б результат.
+	 */
+	BW_RESULT
 }

@@ -874,14 +874,15 @@ public class PictureService {
 			log.info("Processing level {} markers ...", _idx);
 
 			OffsetDateTime startLevelProcessingTime = OffsetDateTime.now();
-			List<MatOfPoint> contours = new ArrayList<>();
-			MatOfInt4 hierarchy = new MatOfInt4();
-			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_NONE);
+//			List<MatOfPoint> contours = new ArrayList<>();
+//			MatOfInt4 hierarchy = new MatOfInt4();
+//			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_NONE);
 
-			Mat markers = Mat.zeros(_mat.size(), CvType.CV_32S);
-			for (int i = 0; i < contours.size(); i++) {
-				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), 1, 8, hierarchy, Integer.MAX_VALUE, new Point());
-			}
+			Mat markers = new Mat(_mat.size(), CvType.CV_32S);
+			_mat.convertTo(markers, CvType.CV_32S);
+//			for (int i = 0; i < contours.size(); i++) {
+//				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), 1, 8, hierarchy, Integer.MAX_VALUE, new Point());
+//			}
 
 			saveResult(markers.clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 10000);
 

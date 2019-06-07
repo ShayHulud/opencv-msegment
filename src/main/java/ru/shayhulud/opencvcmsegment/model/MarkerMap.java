@@ -35,17 +35,17 @@ public class MarkerMap {
 	}
 
 	public int incrementAllLevelCount() {
-		this.allLevelCount++;
+		this.allLevelCount = this.allLevelCount + 1;
 		return this.allLevelCount;
 	}
 
 	public int incrementMeanLevelCount() {
-		this.meanLevelCount++;
+		this.meanLevelCount = this.meanLevelCount + 1;
 		return this.meanLevelCount;
 	}
 
 	public int incrementMarkerLevelCount() {
-		this.markerCount++;
+		this.markerCount = this.markerCount + 1;
 		return this.markerCount;
 	}
 

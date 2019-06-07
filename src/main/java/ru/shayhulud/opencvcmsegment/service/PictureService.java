@@ -808,14 +808,13 @@ public class PictureService {
 		}
 
 		//ALLOCATE TO LAYERS
-		for (int i = 0; i < srcGray.rows() - 1; i++) {
-			for (int j = 0; j < srcGray.cols() - 1; j++) {
+		for (int i = 0; i < srcGray.rows(); i++) {
+			for (int j = 0; j < srcGray.cols(); j++) {
 				short brightness = (short) srcGray.get(i, j)[0];
-				for (int k = 0; k < markerMaps.size(); k++) {
-					MarkerMap markerMap = markerMaps.get(k);
+				for (MarkerMap markerMap : markerMaps) {
 					BrightLevel currBrightLevel = markerMap.getBrightLevel();
 					if (currBrightLevel.getStart() <= brightness && brightness <= currBrightLevel.getEnd()) {
-						markerMap.getAllLevel().put(i, j, new byte[]{(byte) brightness});
+						markerMap.getAllLevel().put(i, j, new byte[]{(byte) 255});
 						markerMap.incrementAllLevelCount();
 					}
 
@@ -824,15 +823,23 @@ public class PictureService {
 						int diapRange = 3;
 						BrightLevel meanDiap = currBrightLevel.getMeanDiap(diapRange);
 						if (meanDiap.getStart() <= brightness && brightness <= meanDiap.getEnd()) {
-							markerMap.getMeanLevel().put(i, j, new byte[]{(byte) brightness});
+							markerMap.getMeanLevel().put(i, j, new byte[]{(byte) 255});
 							markerMap.incrementMeanLevelCount();
+
+							double[] indexes = new double[]{markerMap.getIdx()};
+							markerMap.getMarker().put(i, j, indexes);
+							markerMap.incrementMarkerLevelCount();
 							break;
 						}
 					} else {
 						int mean = currBrightLevel.getMeanLevel();
 						if (brightness == mean) {
-							markerMap.getMeanLevel().put(i, j, new byte[]{(byte) brightness});
+							markerMap.getMeanLevel().put(i, j, new byte[]{(byte) 255});
 							markerMap.incrementMeanLevelCount();
+
+							double[] indexes = new double[]{markerMap.getIdx()};
+							markerMap.getMarker().put(i, j, indexes);
+							markerMap.incrementMarkerLevelCount();
 							break;
 						}
 					}
@@ -843,66 +850,8 @@ public class PictureService {
 		for (MarkerMap markerMap : markerMaps) {
 			int _idx = markerMap.getIdx();
 			saveResult(markerMap.getAllLevel().clone(), ii, step, "level_" + _idx + "_of_depth");
-			saveResult(markerMap.getMeanLevel().clone(), ii, step, "mean_level_" + _idx + "_of_depth", 10000);
-		}
-
-		//FILTER EMPTY OR LOW VALUED LEVELS
-//		List<MarkerMap> filteredMarkerMaps = new LinkedList<>();
-//		for (MarkerMap markerMap : markerMaps) {
-//			Mat _mat = markerMap.getMeanLevel();
-//			int count = 0;
-//			for (int i = 0; i < _mat.rows() - 1; i++) {
-//				if (count == 0) {
-//					for (int j = 0; j < _mat.cols() - 1; j++) {
-//						short brightness = (short) _mat.get(i, j)[0];
-//						if (brightness > 0) {
-//							count++;
-//							filteredMarkerMaps.add(markerMap);
-//							break;
-//						}
-//					}
-//				}
-//			}
-//		}
-//		markerMaps = filteredMarkerMaps;
-
-		//WSHED
-		++step;
-		for (MarkerMap markerMap : markerMaps) {
-			Integer _idx = markerMap.getIdx();
-			Mat _mat = markerMap.getMeanLevel();
-			log.info("Processing level {} markers ...", _idx);
-
-			OffsetDateTime startLevelProcessingTime = OffsetDateTime.now();
-//			List<MatOfPoint> contours = new ArrayList<>();
-//			MatOfInt4 hierarchy = new MatOfInt4();
-//			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_NONE);
-
-			Mat markers = new Mat(_mat.size(), CvType.CV_32S);
-			_mat.convertTo(markers, CvType.CV_32S);
-//			for (int i = 0; i < contours.size(); i++) {
-//				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), 1, 8, hierarchy, Integer.MAX_VALUE, new Point());
-//			}
-
-			saveResult(markers.clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 10000);
-
-			for (int i = 0; i < markers.rows(); i++) {
-				for (int j = 0; j < markers.cols(); j++) {
-					double[] indexes = markers.get(i, j);
-					int index = (int) indexes[0];
-					if (index > 0) {
-						indexes[0] = _idx;
-						markers.put(i, j, indexes);
-						markerMap.incrementMarkerLevelCount();
-					}
-				}
-			}
-			markerMap.setMarker(markers);
-
-			OffsetDateTime stopLevelProcessingTime = OffsetDateTime.now();
-			Duration period = Duration.between(startLevelProcessingTime, stopLevelProcessingTime);
-			markerMap.setMarkerDuration(period);
-			log.info("...done");
+			saveResult(markerMap.getMeanLevel().clone(), ii, step, "mean_level_" + _idx + "_of_depth", 1);
+			saveResult(markerMap.getMarker().clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 1);
 		}
 
 		for (MarkerMap mm : markerMaps) {

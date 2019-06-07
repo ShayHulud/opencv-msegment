@@ -2,6 +2,7 @@ package ru.shayhulud.opencvcmsegment.model;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;
+import org.opencv.core.CvType;
 import org.opencv.core.Mat;
 import org.opencv.core.Size;
 
@@ -27,10 +28,11 @@ public class MarkerMap {
 	public MarkerMap(int idx, BrightLevel brightLevel, Size srcSize, int srcType) {
 		this.idx = idx;
 		this.brightLevel = brightLevel;
-		this.allLevel = new Mat(srcSize, srcType);
+		this.allLevel = Mat.zeros(srcSize, srcType);
 		this.allLevelCount = 0;
-		this.meanLevel = new Mat(srcSize, srcType);
+		this.meanLevel = Mat.zeros(srcSize, srcType);
 		this.meanLevelCount = 0;
+		this.marker = Mat.zeros(srcSize, CvType.CV_32S);
 		this.markerCount = 0;
 	}
 
@@ -50,15 +52,15 @@ public class MarkerMap {
 	}
 
 	public String stats() {
-		String sb = "\n" + "[_idx = " + this.idx + "]\n" +
+		String sb = "\n{\n" + "[_idx = " + this.idx + "]\n" +
 			"[bright level = {" + this.brightLevel.getStart() + "-" + this.brightLevel.getEnd() + "}]\n" +
 			"[allLevelCount = " + this.allLevelCount + "; meanLevelCount = " + this.meanLevelCount + "; markerCount = " + this.markerCount + ";]\n" +
-			"[markerDuration = formatted:{" +
-			this.markerDuration.get(ChronoUnit.SECONDS) / 60 + " min " +
-			this.markerDuration.get(ChronoUnit.SECONDS) % 60 + " sec " +
-			this.markerDuration.get(ChronoUnit.NANOS) / 1000000 + " mills}; " +
-			"allmills:{" + (this.markerDuration.getSeconds() * 1000 + this.markerDuration.getNano() / 1000000) +
-			"}]";
+//			"[markerDuration = formatted:{" +
+//			this.markerDuration.get(ChronoUnit.SECONDS) / 60 + " min " +
+//			this.markerDuration.get(ChronoUnit.SECONDS) % 60 + " sec " +
+//			this.markerDuration.get(ChronoUnit.NANOS) / 1000000 + " mills}; " +
+//			"allmills:{" + (this.markerDuration.getSeconds() * 1000 + this.markerDuration.getNano() / 1000000) + "}" +
+			"}";
 		return sb;
 	}
 

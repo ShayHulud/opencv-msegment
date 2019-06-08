@@ -23,5 +23,9 @@ public enum AlgorythmOptions {
 	/**
 	 * Нужен ч/б результат.
 	 */
-	BW_RESULT
+	BW_RESULT,
+	/**
+	 * multiotsu
+	 */
+	MULTI_OTSU
 }

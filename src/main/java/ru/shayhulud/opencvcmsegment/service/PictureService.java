@@ -19,6 +19,7 @@ import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import ru.shayhulud.opencvcmsegment.common.behavior.CONSOLE;
 import ru.shayhulud.opencvcmsegment.common.behavior.GUI;
+import ru.shayhulud.opencvcmsegment.common.util.CollectionUtil;
 import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.common.util.OutFileNameGenerator;
 import ru.shayhulud.opencvcmsegment.common.util.PixelUtil;
@@ -680,10 +681,6 @@ public class PictureService {
 		}
 		saveResult(brightHistImage.clone(), ii, step, "bright_histo");
 
-		//TODO:
-		// 2) ~сравнивать с средним по сегменту~
-		// 4) ~в маркеры - пиксели от среднего значения~ +/- % от ширины блока
-		// 5) сравниваем самый узкий и самый высокий блок, кто из них по площади больше - тот фон.
 		//Collecting ranges
 		int blockSizeLimit = Double.valueOf(256 / depth).intValue();
 		log.info("max block size = {}", blockSizeLimit);
@@ -746,6 +743,104 @@ public class PictureService {
 		}
 		log.info("flex thresholds:{} size {}", fThresholds, fThresholds.size());
 
+		if (options.contains(AlgorythmOptions.MULTI_OTSU)) {
+
+			int numberOfThresholds = fThresholds.size();
+
+			int pixNum = srcGray.rows() * srcGray.cols();
+			double mt = 0;
+			double[] optimalThresholds = new double[numberOfThresholds];
+			Arrays.fill(optimalThresholds, 0);
+			double[] wk = new double[numberOfThresholds + 1];
+			Arrays.fill(wk, 0);
+			double[] mk = new double[numberOfThresholds + 1];
+			Arrays.fill(mk, 0);
+			double[] m = new double[numberOfThresholds + 1];
+			Arrays.fill(m, 0);
+			int[] idx = new int[numberOfThresholds];
+			Arrays.fill(idx, 0);
+
+			double maxBetweenVars = 0;
+			for (int i = 0; i < histSize; i++) {
+				int intensity = (int) brightHist.get(i, 0)[0];
+				mt += i * (intensity / (double) pixNum);
+			}
+
+			//VAR 1
+//			int nComb = nCombinations(histSize, numberOfThresholds);
+//			int[][] ibin = new int[nComb][numberOfThresholds];
+//			for (int i = 0; i < nComb; i++) {
+//				for (int j = 0; j < numberOfThresholds; j++) {
+//					ibin[i][j] = 0;
+//				}
+//			}
+
+//			boolean[] v = new boolean[histSize];
+//			Arrays.fill(v, 0, numberOfThresholds, true);
+//			int cc = 0;
+//			int ci = 0;
+//			do {
+//				for (int i = 0; i < histSize; ++i) {
+//					if (ci == numberOfThresholds) ci = 0;
+//					if (v[i]) {
+//						ibin[cc][ci] = i;
+//						ci++;
+//					}
+//				}
+//				cc++;
+//			} while (CollectionUtil.booleanPrevPerMutation(v, 0, v.length));
+
+			int[] lastIndex = new int[numberOfThresholds];
+			Arrays.fill(lastIndex, 0);
+
+//			for (int i = 0; i < nComb; i++) {
+//				for (int j = 0; j < numberOfThresholds; j++) {
+//					if (lastIndex[j] != ibin[i][j] || i == 0) {
+//						int intensity = (int) brightHist.get(ibin[i][j], 0)[0];
+//						wk[j] += intensity / (double) pixNum;
+//						mk[j] += ibin[i][j] * intensity / (double) pixNum;
+//						m[j] = mk[j] / wk[j];
+//
+//						if (j > 0) {
+//							double wkSumm = 0;
+//							double mkSumm = 0;
+//							for (int k = 0; k <= j; k++) {
+//								wkSumm += wk[k];
+//								mkSumm += mk[k];
+//							}
+//							wk[j + 1] = 1 - wkSumm;
+//							mk[j + 1] = mt - mkSumm;
+//							m[j + 1] = mk[j + 1] / wk[j + 1];
+//						}
+//						if (j > 0 && j < numberOfThresholds - 1) {
+//							wk[j + 1] = 0.0;
+//							mk[j + 1] = 0.0;
+//						}
+//
+//						lastIndex[j] = ibin[i][j];
+//					}
+//				}
+//
+//				double currVarB = 0.0;
+//				for (int j = 0; j <= numberOfThresholds; j++) {
+//					currVarB += wk[j] * (m[j] - mt) * (m[j] - mt);
+//				}
+//				if (currVarB > maxBetweenVars) {
+//					maxBetweenVars = currVarB;
+//					for (int j = 0; j < numberOfThresholds; j++) {
+//						optimalThresholds[j] = ibin[i][j];
+//					}
+//				}
+//
+//			}
+
+
+			//VAR 2
+//			otsuPart(optimalThresholds, wk, mk, m, idx, lastIndex, mt, pixNum, maxBetweenVars, histSize, brightHist, 0, 0);
+			log.info("otsu thresholds {}", optimalThresholds);
+
+		}
+
 		int maxBlockValue = fThresholds.stream()
 			.map(BrightLevel::getCount)
 			.max(Integer::compareTo).get();
@@ -801,17 +896,17 @@ public class PictureService {
 
 		//MAKE LAYERS
 		++step;
-		List<MarkerMap> markerMaps = new LinkedList<>();
+		List<MarkerMap> meanMarkerMaps = new LinkedList<>();
 		for (int i = 0; i < fThresholds.size(); i++) {
 			MarkerMap mm = new MarkerMap(i + 1, fThresholds.get(i), srcGray.size(), srcGray.type());
-			markerMaps.add(mm);
+			meanMarkerMaps.add(mm);
 		}
 
 		//ALLOCATE TO LAYERS
 		for (int i = 0; i < srcGray.rows(); i++) {
 			for (int j = 0; j < srcGray.cols(); j++) {
 				short brightness = (short) srcGray.get(i, j)[0];
-				for (MarkerMap markerMap : markerMaps) {
+				for (MarkerMap markerMap : meanMarkerMaps) {
 					BrightLevel currBrightLevel = markerMap.getBrightLevel();
 					if (currBrightLevel.getStart() <= brightness && brightness <= currBrightLevel.getEnd()) {
 						markerMap.getAllLevel().put(i, j, new byte[]{(byte) 255});
@@ -847,30 +942,30 @@ public class PictureService {
 			}
 		}
 
-		for (MarkerMap markerMap : markerMaps) {
+		for (MarkerMap markerMap : meanMarkerMaps) {
 			int _idx = markerMap.getIdx();
-			saveResult(markerMap.getAllLevel().clone(), ii, step, "level_" + _idx + "_of_depth");
+			saveResult(markerMap.getAllLevel().clone(), ii, step, "mean_thresh_level_" + _idx + "_of_depth");
 			saveResult(markerMap.getMeanLevel().clone(), ii, step, "mean_level_" + _idx + "_of_depth", 1);
-			saveResult(markerMap.getMarker().clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 1);
+			saveResult(markerMap.getMarker().clone(), ii, step, "mean_markers_of_level_" + _idx + "_of_depth", 1);
 		}
 
-		for (MarkerMap mm : markerMaps) {
+		for (MarkerMap mm : meanMarkerMaps) {
 			log.info("{}", mm.stats());
 		}
 
-		Mat wshedMarkSumm = markerMaps.get(0).getMarker().clone();
-		if (markerMaps.size() > 1) {
-			for (int i = 1; i < markerMaps.size(); i++) {
-				MarkerMap markerMap = markerMaps.get(i);
+		Mat wshedMarkSumm = meanMarkerMaps.get(0).getMarker().clone();
+		if (meanMarkerMaps.size() > 1) {
+			for (int i = 1; i < meanMarkerMaps.size(); i++) {
+				MarkerMap markerMap = meanMarkerMaps.get(i);
 				Core.add(wshedMarkSumm, markerMap.getMarker(), wshedMarkSumm);
 			}
 		}
 		saveResult(wshedMarkSumm.clone(), ii, ++step, "markers_summ", 10000);
 
-		Mat coloredMarkers = colorByIndexes(wshedMarkSumm.clone(), markerMaps.size());
+		Mat coloredMarkers = colorByIndexes(wshedMarkSumm.clone(), meanMarkerMaps.size());
 		saveResult(coloredMarkers.clone(), ii, ++step, "colored_markers_summ");
 
-		Mat dst = this.watershed(src, wshedMarkSumm, markerMaps.size());
+		Mat dst = this.watershed(src, wshedMarkSumm, meanMarkerMaps.size());
 
 		String resultOptions = options.stream().map(AlgorythmOptions::name).collect(Collectors.joining("_"));
 		saveResult(dst.clone(), ii, ++step,
@@ -974,5 +1069,65 @@ public class PictureService {
 		Imgproc.cvtColor(src, bw, Imgproc.COLOR_BGR2GRAY);
 		Imgproc.threshold(bw, bw, 40, 255, Imgproc.THRESH_BINARY | Imgproc.THRESH_OTSU);
 		return bw;
+	}
+
+	private void otsuPart(double[] optimalThresholds, double[] wk, double[] mk, double[] m, int[] idx,
+	                      int[] savedIdx, double mt, int pixNum, double maxBetweenVar, int histSize, Mat hist, int start, int step) {
+		if (step >= optimalThresholds.length) {
+			return;
+		}
+		for (idx[step] = start; idx[step] < histSize; idx[step]++) {
+			int intensity = (int) hist.get(idx[step], 0)[0];
+			wk[step] += intensity / (double) pixNum;
+			mk[step] += idx[step] * intensity / (double) pixNum;
+			m[step] = mk[step] / wk[step];
+
+			if (step > 0) {
+				double wkSumm = 0;
+				double mkSumm = 0;
+				for (int k = 0; k < step + 1; k++) {
+					wkSumm += wk[k];
+					mkSumm += mk[k];
+				}
+				wk[step + 1] = 1 - wkSumm;
+				mk[step + 1] = mt - mkSumm;
+				m[step + 1] = mk[step + 1] / wk[step + 1];
+			}
+
+			if (step > 0 && step < optimalThresholds.length - 1) {
+				wk[step + 1] = 0.0;
+				mk[step + 1] = 0.0;
+			}
+
+			if (step == optimalThresholds.length - 1) {
+				double currVarB = 0;
+				for (int k = 0; k < step + 1; k++) {
+					currVarB += wk[k] * (m[k] - mt) * (m[k] - mt);
+				}
+				if (maxBetweenVar < currVarB) {
+					maxBetweenVar = currVarB;
+					for (int k = 0; k < step; k++) {
+						optimalThresholds[k] = savedIdx[k];
+					}
+				}
+			}
+
+			otsuPart(optimalThresholds, wk, mk, m, idx, savedIdx, mt, pixNum, maxBetweenVar, histSize, hist, idx[step] + 1, step + 1);
+
+		}
+	}
+
+	private int nCombinations(int n, int r) {
+
+		if (r > n) return 0;
+		if (r * 2 > n) r = n - r;
+		if (r == 0) return 1;
+
+		int ret = n;
+		for (int i = 2; i <= r; ++i) {
+			ret *= (n - i + 1);
+			ret /= i;
+		}
+		return ret;
 	}
 }

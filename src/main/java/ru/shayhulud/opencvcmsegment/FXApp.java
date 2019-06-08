@@ -181,6 +181,9 @@ public class FXApp extends Application {
 		Label preprocDiaplLabel = new Label("Diap Selection:");
 		CheckBox preprocDiapCB = new CheckBox();
 		Separator vPreprocSeparator_3 = new Separator(Orientation.VERTICAL);
+		Label yaprMultiOtsuLabel = new Label("YAPR MultiOtsu:");
+		CheckBox yaprMultiOtsuCB = new CheckBox();
+		Separator vPreprocSeparator_4 = new Separator(Orientation.VERTICAL);
 
 		//MENU-RIGHT
 		VBox outputMenuBox = new VBox();
@@ -281,7 +284,10 @@ public class FXApp extends Application {
 			vPreprocSeparator_2,
 			preprocDiaplLabel,
 			preprocDiapCB,
-			vPreprocSeparator_3
+			vPreprocSeparator_3,
+			yaprMultiOtsuLabel,
+			yaprMultiOtsuCB,
+			vPreprocSeparator_4
 		);
 		//OUTPUT MENU
 		outputMenuBox.getChildren().addAll(outputSelectBox);
@@ -471,6 +477,20 @@ public class FXApp extends Application {
 			}
 		);
 
+		yaprMultiOtsuCB.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (yaprMultiOtsuCB.isSelected()) {
+						FXApp.this.preProcessOptions.add(AlgorythmOptions.MULTI_OTSU);
+					} else {
+						FXApp.this.preProcessOptions.remove(AlgorythmOptions.MULTI_OTSU);
+					}
+				}
+			}
+		);
+
+
 		saveResultsButton.setOnAction(
 			new EventHandler<ActionEvent>() {
 				@Override
@@ -566,6 +586,10 @@ public class FXApp extends Application {
 				int newIntValue = Integer.parseInt(newValue);
 				if (newIntValue < 1) {
 					newIntValue = 1;
+					newValue = Integer.toString(newIntValue);
+				}
+				if (newIntValue > 255) {
+					newIntValue = 255;
 					newValue = Integer.toString(newIntValue);
 				}
 				depthCountInput.setText(newValue);

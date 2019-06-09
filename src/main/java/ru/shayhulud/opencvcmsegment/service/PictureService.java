@@ -41,6 +41,7 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
@@ -749,8 +750,6 @@ public class PictureService {
 
 			int pixNum = srcGray.rows() * srcGray.cols();
 			double mt = 0;
-			double[] optimalThresholds = new double[numberOfThresholds];
-			Arrays.fill(optimalThresholds, 0);
 			double[] wk = new double[numberOfThresholds + 1];
 			Arrays.fill(wk, 0);
 			double[] mk = new double[numberOfThresholds + 1];
@@ -766,11 +765,8 @@ public class PictureService {
 				mt += i * (intensity / (double) pixNum);
 			}
 
-			int[] lastIndex = new int[numberOfThresholds];
-			Arrays.fill(lastIndex, 0);
-
-			otsuPart(optimalThresholds, wk, mk, m, idx, lastIndex, mt, pixNum, maxBetweenVars, histSize, brightHist, 0, 0);
-			log.info("otsu thresholds {}", optimalThresholds);
+			OtsuStep otsuThresholds = otsuPart(numberOfThresholds, wk, mk, m, idx, mt, pixNum, maxBetweenVars, histSize, brightHist, 0, 0);
+			log.info("otsu thresholds {}", otsuThresholds);
 
 		}
 
@@ -1004,13 +1000,14 @@ public class PictureService {
 		return bw;
 	}
 
-	private OtsuStep otsuPart(double[] optimalThresholds, double[] wk, double[] mk, double[] m, int[] idx,
-	                          int[] savedIdx, double mt, int pixNum, double maxBetweenVar, int histSize, Mat hist, int start, int step) {
-		if (step >= optimalThresholds.length) {
+	private OtsuStep otsuPart(int optimalThresholdsNum, double[] wk, double[] mk, double[] m, int[] idx,
+	                          double mt, int pixNum, double maxBetweenVar, int histSize, Mat hist, int start, int step) {
+		if (step >= optimalThresholdsNum) {
 			return null;
 		}
 		OtsuStep thisStep = new OtsuStep();
-		//TODO; переменную для сохранения возвращаемого значения из нижнего уровня.
+		OtsuStep temp = new OtsuStep();
+		List<OtsuStep> tempDeepers = new LinkedList<>();
 		for (idx[step] = start; idx[step] < histSize; idx[step]++) {
 			int intensity = (int) hist.get(idx[step], 0)[0];
 			wk[step] += intensity / (double) pixNum;
@@ -1028,7 +1025,7 @@ public class PictureService {
 				mk[step + 1] = mt - mkSumm;
 			}
 
-			if (step == optimalThresholds.length - 1) {
+			if (step == optimalThresholdsNum - 1) {
 				double currVarB = 0;
 				for (int k = 0; k < step + 1; k++) {
 					currVarB += wk[k] * (m[k] - mt) * (m[k] - mt);
@@ -1039,28 +1036,18 @@ public class PictureService {
 					thisStep.setMaxVar(maxBetweenVar);
 				}
 			} else {
-				//TODO: Седлать возвращаемое значение в виде списка пар (индекс где нашли максимальную варианцию, вариацию)
-				OtsuStep deeper = otsuPart(optimalThresholds, wk, mk, m, idx, savedIdx, mt, pixNum, maxBetweenVar, histSize, hist, idx[step] + 1, step + 1);
-				//TODO: защиту от лишних
-				thisStep.getDeepers().add(deeper);
-				//TODO: смотрим вариацию
+				OtsuStep deeper = otsuPart(optimalThresholdsNum, wk, mk, m, idx, mt, pixNum, maxBetweenVar, histSize, hist, idx[step] + 1, step + 1);
+				tempDeepers.add(deeper);
+				OtsuStep maxVarStep = tempDeepers.stream()
+					.max(Comparator.comparingDouble(OtsuStep::getMaxVar))
+					.get();
+				temp.setMaxVar(maxVarStep.getMaxVar());
+				temp.setIdxMaxVar(maxVarStep.getIdxMaxVar());
+				temp.setDeepers(maxVarStep.getDeepers());
 			}
 		}
+		thisStep.getDeepers().add(temp);
 
 		return thisStep;
-	}
-
-	private int nCombinations(int n, int r) {
-
-		if (r > n) return 0;
-		if (r * 2 > n) r = n - r;
-		if (r == 0) return 1;
-
-		int ret = n;
-		for (int i = 2; i <= r; ++i) {
-			ret *= (n - i + 1);
-			ret /= i;
-		}
-		return ret;
 	}
 }

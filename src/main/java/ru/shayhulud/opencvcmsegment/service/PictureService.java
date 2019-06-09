@@ -19,7 +19,6 @@ import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import ru.shayhulud.opencvcmsegment.common.behavior.CONSOLE;
 import ru.shayhulud.opencvcmsegment.common.behavior.GUI;
-import ru.shayhulud.opencvcmsegment.common.util.CollectionUtil;
 import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.common.util.OutFileNameGenerator;
 import ru.shayhulud.opencvcmsegment.common.util.PixelUtil;
@@ -27,6 +26,7 @@ import ru.shayhulud.opencvcmsegment.exceptions.WrongMatBodyLengthException;
 import ru.shayhulud.opencvcmsegment.model.BrightLevel;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.MarkerMap;
+import ru.shayhulud.opencvcmsegment.model.OtsuStep;
 import ru.shayhulud.opencvcmsegment.model.Result;
 import ru.shayhulud.opencvcmsegment.model.dic.AlgorythmOptions;
 import ru.shayhulud.opencvcmsegment.model.dic.SegMethod;
@@ -766,77 +766,10 @@ public class PictureService {
 				mt += i * (intensity / (double) pixNum);
 			}
 
-			//VAR 1
-//			int nComb = nCombinations(histSize, numberOfThresholds);
-//			int[][] ibin = new int[nComb][numberOfThresholds];
-//			for (int i = 0; i < nComb; i++) {
-//				for (int j = 0; j < numberOfThresholds; j++) {
-//					ibin[i][j] = 0;
-//				}
-//			}
-
-//			boolean[] v = new boolean[histSize];
-//			Arrays.fill(v, 0, numberOfThresholds, true);
-//			int cc = 0;
-//			int ci = 0;
-//			do {
-//				for (int i = 0; i < histSize; ++i) {
-//					if (ci == numberOfThresholds) ci = 0;
-//					if (v[i]) {
-//						ibin[cc][ci] = i;
-//						ci++;
-//					}
-//				}
-//				cc++;
-//			} while (CollectionUtil.booleanPrevPerMutation(v, 0, v.length));
-
 			int[] lastIndex = new int[numberOfThresholds];
 			Arrays.fill(lastIndex, 0);
 
-//			for (int i = 0; i < nComb; i++) {
-//				for (int j = 0; j < numberOfThresholds; j++) {
-//					if (lastIndex[j] != ibin[i][j] || i == 0) {
-//						int intensity = (int) brightHist.get(ibin[i][j], 0)[0];
-//						wk[j] += intensity / (double) pixNum;
-//						mk[j] += ibin[i][j] * intensity / (double) pixNum;
-//						m[j] = mk[j] / wk[j];
-//
-//						if (j > 0) {
-//							double wkSumm = 0;
-//							double mkSumm = 0;
-//							for (int k = 0; k <= j; k++) {
-//								wkSumm += wk[k];
-//								mkSumm += mk[k];
-//							}
-//							wk[j + 1] = 1 - wkSumm;
-//							mk[j + 1] = mt - mkSumm;
-//							m[j + 1] = mk[j + 1] / wk[j + 1];
-//						}
-//						if (j > 0 && j < numberOfThresholds - 1) {
-//							wk[j + 1] = 0.0;
-//							mk[j + 1] = 0.0;
-//						}
-//
-//						lastIndex[j] = ibin[i][j];
-//					}
-//				}
-//
-//				double currVarB = 0.0;
-//				for (int j = 0; j <= numberOfThresholds; j++) {
-//					currVarB += wk[j] * (m[j] - mt) * (m[j] - mt);
-//				}
-//				if (currVarB > maxBetweenVars) {
-//					maxBetweenVars = currVarB;
-//					for (int j = 0; j < numberOfThresholds; j++) {
-//						optimalThresholds[j] = ibin[i][j];
-//					}
-//				}
-//
-//			}
-
-
-			//VAR 2
-//			otsuPart(optimalThresholds, wk, mk, m, idx, lastIndex, mt, pixNum, maxBetweenVars, histSize, brightHist, 0, 0);
+			otsuPart(optimalThresholds, wk, mk, m, idx, lastIndex, mt, pixNum, maxBetweenVars, histSize, brightHist, 0, 0);
 			log.info("otsu thresholds {}", optimalThresholds);
 
 		}
@@ -1071,11 +1004,13 @@ public class PictureService {
 		return bw;
 	}
 
-	private void otsuPart(double[] optimalThresholds, double[] wk, double[] mk, double[] m, int[] idx,
-	                      int[] savedIdx, double mt, int pixNum, double maxBetweenVar, int histSize, Mat hist, int start, int step) {
+	private OtsuStep otsuPart(double[] optimalThresholds, double[] wk, double[] mk, double[] m, int[] idx,
+	                          int[] savedIdx, double mt, int pixNum, double maxBetweenVar, int histSize, Mat hist, int start, int step) {
 		if (step >= optimalThresholds.length) {
-			return;
+			return null;
 		}
+		OtsuStep thisStep = new OtsuStep();
+		//TODO; переменную для сохранения возвращаемого значения из нижнего уровня.
 		for (idx[step] = start; idx[step] < histSize; idx[step]++) {
 			int intensity = (int) hist.get(idx[step], 0)[0];
 			wk[step] += intensity / (double) pixNum;
@@ -1091,12 +1026,6 @@ public class PictureService {
 				}
 				wk[step + 1] = 1 - wkSumm;
 				mk[step + 1] = mt - mkSumm;
-				m[step + 1] = mk[step + 1] / wk[step + 1];
-			}
-
-			if (step > 0 && step < optimalThresholds.length - 1) {
-				wk[step + 1] = 0.0;
-				mk[step + 1] = 0.0;
 			}
 
 			if (step == optimalThresholds.length - 1) {
@@ -1106,15 +1035,19 @@ public class PictureService {
 				}
 				if (maxBetweenVar < currVarB) {
 					maxBetweenVar = currVarB;
-					for (int k = 0; k < step; k++) {
-						optimalThresholds[k] = savedIdx[k];
-					}
+					thisStep.setIdxMaxVar(idx[step]);
+					thisStep.setMaxVar(maxBetweenVar);
 				}
+			} else {
+				//TODO: Седлать возвращаемое значение в виде списка пар (индекс где нашли максимальную варианцию, вариацию)
+				OtsuStep deeper = otsuPart(optimalThresholds, wk, mk, m, idx, savedIdx, mt, pixNum, maxBetweenVar, histSize, hist, idx[step] + 1, step + 1);
+				//TODO: защиту от лишних
+				thisStep.getDeepers().add(deeper);
+				//TODO: смотрим вариацию
 			}
-
-			otsuPart(optimalThresholds, wk, mk, m, idx, savedIdx, mt, pixNum, maxBetweenVar, histSize, hist, idx[step] + 1, step + 1);
-
 		}
+
+		return thisStep;
 	}
 
 	private int nCombinations(int n, int r) {

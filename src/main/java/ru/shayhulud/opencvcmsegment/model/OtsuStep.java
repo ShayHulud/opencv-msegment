@@ -1,18 +1,17 @@
 package ru.shayhulud.opencvcmsegment.model;
 
+import lombok.AllArgsConstructor;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
-import java.util.LinkedList;
 import java.util.List;
 
 @Data
+@NoArgsConstructor
+@AllArgsConstructor
 public class OtsuStep {
 
-	private List<OtsuStep> deepers;
-	private Integer idxMaxVar;
 	private Double maxVar;
-
-	public OtsuStep() {
-		this.deepers = new LinkedList<>();
-	}
+	private Integer idxMaxVar;
+	private List<Integer> deepers;
 }

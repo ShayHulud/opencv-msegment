@@ -19,6 +19,7 @@ import org.opencv.imgcodecs.Imgcodecs;
 import org.opencv.imgproc.Imgproc;
 import ru.shayhulud.opencvcmsegment.common.behavior.CONSOLE;
 import ru.shayhulud.opencvcmsegment.common.behavior.GUI;
+import ru.shayhulud.opencvcmsegment.common.util.CollectionUtil;
 import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.common.util.OutFileNameGenerator;
 import ru.shayhulud.opencvcmsegment.common.util.PixelUtil;
@@ -621,16 +622,11 @@ public class PictureService {
 		Core.split(src, bgrPanes);
 		for (int i = 0; i < bgrPanes.size(); i++) {
 			Mat pane = bgrPanes.get(i);
-//			saveResult(pane.clone(), ii, step, "bgr_split_" + i);
 
 			Mat hist = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
 			Imgproc.calcHist(Arrays.asList(pane), new MatOfInt(0), new Mat(), hist, new MatOfInt(histSize), new MatOfFloat(range));
 			Core.normalize(hist, hist, 0, histImage.rows(), Core.NORM_MINMAX, -1, new Mat());
 			hists.add(hist);
-
-//			Mat histSet = hist.clone();
-//			histSet.convertTo(histSet, CvType.CV_8UC3);
-//			saveResult(histSet, ii, step, "hist_set_" + i);
 		}
 
 		for (int i = 1; i < histSize; i++) {
@@ -659,29 +655,31 @@ public class PictureService {
 
 		//BRIGHT HISTO
 		++step;
-		Mat brightHistImage = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
 		Mat brightHist = new Mat(hist_w, hist_h, CvType.CV_8UC1, new Scalar(0, 0, 0));
 		Imgproc.calcHist(Arrays.asList(srcGray), new MatOfInt(0), new Mat(), brightHist, new MatOfInt(histSize), new MatOfFloat(range));
 
 		//OUTPUT BRIGHTHISTO
-		Mat brightHistOut = brightHist.clone();
-		Core.normalize(brightHistOut, brightHistOut, 0, brightHistImage.rows(), Core.NORM_MINMAX, -1, new Mat());
-//		Mat histSet = brightHistOut.clone();
-//		histSet.convertTo(histSet, CvType.CV_8UC3);
-//		saveResult(histSet, ii, step, "bright_hist_set");
+		saveOutputBrightHisto(ii, step, brightHist, hist_h, hist_w);
 
-		int bbin_w = Double.valueOf(hist_w / (histSize)).intValue();
-		for (int i = 1; i < histSize; i++) {
-			Imgproc.rectangle(brightHistImage,
-				new Point(bbin_w * (i - 1), hist_h - (brightHistOut.get(i - 1, 0)[0])),
-				new Point(bbin_w * (i), hist_h),
-				new Scalar(170, 170, 170),
-				-1
-			);
+		log.info("bright hist size {}", brightHist.size());
+		Mat reducedBrightHist = Mat.zeros(brightHist.rows() / 2, brightHist.cols(), brightHist.type());
+		for (int i = 0; i < histSize; i += 2) {
+			int originalHistValue_1 = (int) brightHist.get(i, 0)[0];
+			int originalHistValue_2 = (int) brightHist.get(i + 1, 0)[0];
+			reducedBrightHist.put(i / 2, 0, originalHistValue_1 + originalHistValue_2);
 		}
-		saveResult(brightHistImage.clone(), ii, step, "bright_histo");
+
+		int reducedHistSize = reducedBrightHist.rows();
+
+		log.info("reduced btight hist size {}", reducedBrightHist.size());
+
+		//OUTPUT REDUCED BRIGHTHISTO
+		saveOutputBrightHisto(ii, step, reducedBrightHist, hist_h, hist_w);
 
 		//Collecting ranges
+
+		OffsetDateTime startMeanAllocateTime = OffsetDateTime.now();
+
 		int blockSizeLimit = Double.valueOf(256 / depth).intValue();
 		log.info("max block size = {}", blockSizeLimit);
 		List<BrightLevel> fThresholds = new LinkedList<>();
@@ -743,7 +741,19 @@ public class PictureService {
 		}
 		log.info("flex thresholds:{} size {}", fThresholds, fThresholds.size());
 
+		OffsetDateTime stopMeanAllocateTime = OffsetDateTime.now();
+		Duration meanAllocatePeriod = Duration.between(startMeanAllocateTime, stopMeanAllocateTime);
+		log.info(
+			"{} alg completed in {} min {} sec {} mills",
+			"Mean Allocate Blocks",
+			meanAllocatePeriod.get(ChronoUnit.SECONDS) / 60,
+			meanAllocatePeriod.get(ChronoUnit.SECONDS) % 60,
+			meanAllocatePeriod.get(ChronoUnit.NANOS) / 1000000
+		);
+
 		if (options.contains(AlgorythmOptions.MULTI_OTSU)) {
+
+			OffsetDateTime startOtsuAllocateTime = OffsetDateTime.now();
 
 			int numberOfThresholds = fThresholds.size();
 
@@ -756,14 +766,59 @@ public class PictureService {
 			double[] m = new double[numberOfThresholds + 1];
 			Arrays.fill(m, 0);
 
-			for (int i = 0; i < histSize; i++) {
-				int intensity = (int) brightHist.get(i, 0)[0];
+			for (int i = 0; i < reducedHistSize; i++) {
+				int intensity = (int) reducedBrightHist.get(i, 0)[0];
 				mt += i * (intensity / (double) pixNum);
 			}
 
-			OtsuStep otsuThresholds = otsuPart(numberOfThresholds, wk, mk, m, mt, pixNum, histSize, brightHist, 0, 0);
+			OtsuStep otsuThresholds = otsuPart(numberOfThresholds, wk, mk, m, mt, pixNum, reducedHistSize, reducedBrightHist, 0, 0);
 			log.info("otsu thresholds {}", otsuThresholds);
 
+			List<Integer> thresholds = otsuThresholds.getDeepers();
+			thresholds.add(otsuThresholds.getIdxMaxVar());
+
+			thresholds.sort(Integer::compareTo);
+
+			//ScaleUpBack
+			thresholds = thresholds.stream().
+				map(th -> {
+					int nVal = th * (histSize / reducedHistSize);
+					return nVal >= histSize ? histSize - 1 : nVal;
+				}).collect(Collectors.toList());
+
+			List<BrightLevel> overrrideFthresholds = new LinkedList<>();
+
+			int begin = 0;
+			for (Integer threshold : thresholds) {
+				BrightLevel override = new BrightLevel(begin, threshold - 1, 0);
+				begin = threshold;
+				overrrideFthresholds.add(override);
+			}
+			BrightLevel last = CollectionUtil.getLastOf(overrrideFthresholds);
+			last.setEnd(histSize - 1);
+
+			for (int i = 0; i < histSize; i++) {
+				int curr = (int) brightHist.get(i, 0)[0];
+				for (BrightLevel overrride : overrrideFthresholds) {
+					if (overrride.getStart() <= i && i <= overrride.getEnd()) {
+						overrride.setCount(overrride.getCount() + curr);
+					}
+				}
+			}
+
+			log.info("overrideFthresholds {}", overrrideFthresholds);
+
+			OffsetDateTime stopOtsuAllocateTime = OffsetDateTime.now();
+			Duration otsuAllocatePeriod = Duration.between(startOtsuAllocateTime, stopOtsuAllocateTime);
+			log.info(
+				"{} alg completed in {} min {} sec {} mills",
+				"Otsu Allocate Blocks",
+				otsuAllocatePeriod.get(ChronoUnit.SECONDS) / 60,
+				otsuAllocatePeriod.get(ChronoUnit.SECONDS) % 60,
+				otsuAllocatePeriod.get(ChronoUnit.NANOS) / 1000000
+			);
+
+			fThresholds = overrrideFthresholds;
 		}
 
 		int maxBlockValue = fThresholds.stream()
@@ -871,7 +926,7 @@ public class PictureService {
 			int _idx = markerMap.getIdx();
 			saveResult(markerMap.getAllLevel().clone(), ii, step, "mean_thresh_level_" + _idx + "_of_depth");
 			saveResult(markerMap.getMeanLevel().clone(), ii, step, "mean_level_" + _idx + "_of_depth", 1);
-			saveResult(markerMap.getMarker().clone(), ii, step, "mean_markers_of_level_" + _idx + "_of_depth", 1);
+			saveResult(markerMap.getMarker().clone(), ii, step, "mean_markers_of_level_" + _idx + "_of_depth", 1000);
 		}
 
 		for (MarkerMap mm : meanMarkerMaps) {
@@ -1030,7 +1085,7 @@ public class PictureService {
 				}
 				if (maxVar < currVarB) {
 					maxVar = currVarB;
-					maxVarDeepIdx = ii;
+					maxVarIdx = ii;
 				}
 			} else {
 				OtsuStep deeper = otsuPart(optimalThresholdsNum, wk, mk, m, mt, pixNum, histSize, hist, ii + 1, step + 1);
@@ -1047,5 +1102,25 @@ public class PictureService {
 		}
 		maxDeepers.add(maxVarDeepIdx);
 		return new OtsuStep(maxVar, maxVarIdx, maxDeepers);
+	}
+
+	private void saveOutputBrightHisto(ImageInfo ii, int step, Mat brightHist, int hist_h, int hist_w) {
+		Mat brightHistOut = brightHist.clone();
+		int histSize = brightHistOut.rows();
+
+		Mat brightHistImage = new Mat(hist_w, hist_h, CvType.CV_8UC3, new Scalar(0, 0, 0));
+
+		Core.normalize(brightHistOut, brightHistOut, 0, brightHistImage.rows(), Core.NORM_MINMAX, -1, new Mat());
+
+		int bbin_w = Double.valueOf(hist_w / (histSize)).intValue();
+		for (int i = 1; i < histSize; i++) {
+			Imgproc.rectangle(brightHistImage,
+				new Point(bbin_w * (i - 1), hist_h - (brightHistOut.get(i - 1, 0)[0])),
+				new Point(bbin_w * (i), hist_h),
+				new Scalar(170, 170, 170),
+				-1
+			);
+		}
+		saveResult(brightHistImage.clone(), ii, step, "bright_histo_" + histSize + "_bins");
 	}
 }

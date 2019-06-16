@@ -28,6 +28,7 @@ public class ImageInfo implements Cloneable {
 	private String outputDirName;
 	private List<Result> results;
 	private Integer depth;
+	private String testStats;
 
 	public ImageInfo clone() {
 		ImageInfo _newObj = new ImageInfo();

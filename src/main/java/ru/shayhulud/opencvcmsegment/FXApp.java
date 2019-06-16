@@ -23,6 +23,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.Pane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
+import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import lombok.extern.slf4j.Slf4j;
@@ -32,12 +33,17 @@ import ru.shayhulud.opencvcmsegment.common.util.CollectionUtil;
 import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.Result;
-import ru.shayhulud.opencvcmsegment.model.dic.AlgorythmOptions;
+import ru.shayhulud.opencvcmsegment.model.dic.AlgorithmOptions;
+import ru.shayhulud.opencvcmsegment.service.CorrelationTestService;
 import ru.shayhulud.opencvcmsegment.service.PictureService;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -61,6 +67,10 @@ public class FXApp extends Application {
 	 */
 	public ImageInfo toAlgorythmsImage = null;
 	/**
+	 * Объект информации об изображении, идеал, сегментированный человеком.
+	 */
+	public ImageInfo humanResultImage = null;
+	/**
 	 * Объект информации об изображении, для клонирования в изображение для алгоритмов.
 	 */
 	public ImageInfo processedImage = null;
@@ -72,13 +82,15 @@ public class FXApp extends Application {
 	/**
 	 * Сет опций.
 	 */
-	public final Set<AlgorythmOptions> preProcessOptions = new HashSet<AlgorythmOptions>() {{
-		add(AlgorythmOptions.COLORED);
-	}};
+	public final Set<AlgorithmOptions> preProcessOptions = new HashSet<>();
+
+	public Map<String, ImageInfo> srcImages = null;
+	public Map<String, ImageInfo> humanResultsImages = null;
 
 	@Override
 	public void start(Stage stage) {
 
+		final CorrelationTestService testService = new CorrelationTestService();
 		final PictureService pictureService = new PictureService();
 
 		//----------------------//
@@ -114,8 +126,12 @@ public class FXApp extends Application {
 		Label iiSelectLabel = new Label("Select image");
 		//Select picture button
 		FileChooser fileChooser = new FileChooser();
-		Button iiSelectButton = new Button("browse");
+		Button iiSelectButton = new Button("Browse");
 		iiSelectButton.getStyleClass().addAll("select-control");
+		Separator vInputSeparator_1 = new Separator(Orientation.VERTICAL);
+		Label humanResultLabel = new Label("Select human result");
+		Button humanResultButton = new Button("Browse");
+		humanResultButton.getStyleClass().addAll("select-control");
 
 		//Separator
 		Separator iiSelectSeparator_1 = new Separator();
@@ -145,6 +161,9 @@ public class FXApp extends Application {
 		Separator vAlgSeparator_2 = new Separator(Orientation.VERTICAL);
 		Button notConnectedButton = new Button("not connected");
 		notConnectedButton.getStyleClass().addAll("select-control");
+		Separator vAlgSeparator_3 = new Separator(Orientation.VERTICAL);
+		Button testButton = new Button("test");
+		testButton.getStyleClass().addAll("select-control");
 
 		//Separator
 		Separator iiSelectSeparator_3 = new Separator();
@@ -183,6 +202,28 @@ public class FXApp extends Application {
 		Label yaprMultiOtsuLabel = new Label("YAPR MultiOtsu:");
 		CheckBox yaprMultiOtsuCB = new CheckBox();
 		Separator vPreprocSeparator_4 = new Separator(Orientation.VERTICAL);
+		Label coloredResultsLabel = new Label("Colored segments:");
+		CheckBox coloredResultsCB = new CheckBox();
+		Separator vPreprocSeparator_5 = new Separator(Orientation.VERTICAL);
+
+		//Separator
+		Separator iiSelectSeparator_5 = new Separator();
+		iiSelectSeparator_5.setOrientation(Orientation.HORIZONTAL);
+		iiSelectSeparator_5.getStyleClass().addAll("separator");
+
+		HBox correlTestBox = new HBox();
+		DirectoryChooser directoryChooser = new DirectoryChooser();
+		Label srcDirLabel = new Label("Select src directory");
+		Button srcDirButton = new Button("Browse");
+		srcDirButton.getStyleClass().addAll("select-control");
+		Separator vCorrelTestSeparator_1 = new Separator(Orientation.VERTICAL);
+		Label humanResultDirLabel = new Label("Select human results directory");
+		Button humanResultDirButton = new Button("Browse");
+		humanResultDirButton.getStyleClass().addAll("select-control");
+		Separator vCorrelTestSeparator_2 = new Separator(Orientation.VERTICAL);
+		Button massTestButton = new Button(" mass test");
+		massTestButton.getStyleClass().addAll("select-control");
+
 
 		//MENU-RIGHT
 		VBox outputMenuBox = new VBox();
@@ -248,11 +289,16 @@ public class FXApp extends Application {
 			iiSelectSeparator_3,
 			paramsBox,
 			iiSelectSeparator_4,
-			preprocBox
+			preprocBox,
+			iiSelectSeparator_5,
+			correlTestBox
 		);
 		imageSelectBox.getChildren().addAll(
 			iiSelectLabel,
-			iiSelectButton
+			iiSelectButton,
+			vInputSeparator_1,
+			humanResultLabel,
+			humanResultButton
 		);
 		manageBox.getChildren().addAll(
 			resetMarkersButton
@@ -263,7 +309,9 @@ public class FXApp extends Application {
 			vAlgSeparator_1,
 			shapeWshedButton,
 			vAlgSeparator_2,
-			notConnectedButton
+			notConnectedButton,
+			vAlgSeparator_3,
+			testButton
 		);
 		paramsBox.getChildren().addAll(
 			depthParamLabel,
@@ -284,7 +332,19 @@ public class FXApp extends Application {
 			vPreprocSeparator_3,
 			yaprMultiOtsuLabel,
 			yaprMultiOtsuCB,
-			vPreprocSeparator_4
+			vPreprocSeparator_4,
+			coloredResultsLabel,
+			coloredResultsCB,
+			vPreprocSeparator_5
+		);
+		correlTestBox.getChildren().addAll(
+			srcDirLabel,
+			srcDirButton,
+			vCorrelTestSeparator_1,
+			humanResultDirLabel,
+			humanResultDirButton,
+			vCorrelTestSeparator_2,
+			massTestButton
 		);
 		//OUTPUT MENU
 		outputMenuBox.getChildren().addAll(outputSelectBox);
@@ -328,6 +388,112 @@ public class FXApp extends Application {
 					} catch (IOException ex) {
 						log.error("error while open image", ex);
 						return;
+					}
+				}
+			}
+		);
+
+		humanResultButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(final ActionEvent event) {
+					File file = fileChooser.showOpenDialog(stage);
+					try {
+						if (file != null) {
+							FXApp.this.humanResultImage = pictureService.readPicture(file);
+						}
+					} catch (IOException ex) {
+						log.error("error while open image", ex);
+						return;
+					}
+				}
+			}
+		);
+
+		testButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null && FXApp.this.humanResultImage != null) {
+						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
+						FXApp.this.toAlgorythmsImage = testService.test(
+							FXApp.this.toAlgorythmsImage,
+							FXApp.this.humanResultImage
+						);
+						oiDropDownList.setItems(FXCollections.observableArrayList(
+							FXApp.this.toAlgorythmsImage.getResults().stream()
+								.map(Result::getStepName)
+								.collect(Collectors.toList())
+						));
+						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
+					}
+				}
+			}
+		);
+
+		srcDirButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(final ActionEvent event) {
+					File fileDir = directoryChooser.showDialog(stage);
+					try {
+						if (fileDir != null && fileDir.listFiles() != null) {
+							List<File> images = Arrays.asList(fileDir.listFiles());
+
+							FXApp.this.srcImages = new HashMap<>();
+
+							for (File file : images) {
+								ImageInfo ii = pictureService.readPicture(file);
+								FXApp.this.srcImages.put(ii.getImageFileName(), ii);
+							}
+						}
+					} catch (IOException ex) {
+						log.error("error while open directory", ex);
+						return;
+					}
+				}
+			}
+		);
+
+		humanResultDirButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(final ActionEvent event) {
+					File fileDir = directoryChooser.showDialog(stage);
+					try {
+						if (fileDir != null && fileDir.listFiles() != null) {
+							List<File> images = Arrays.asList(fileDir.listFiles());
+
+							FXApp.this.humanResultsImages = new HashMap<>();
+
+							for (File file : images) {
+								ImageInfo ii = pictureService.readPicture(file);
+								FXApp.this.humanResultsImages.put(ii.getImageFileName(), ii);
+							}
+						}
+					} catch (IOException ex) {
+						log.error("error while open directory", ex);
+						return;
+					}
+				}
+			}
+		);
+
+		massTestButton.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (FXApp.this.srcImages != null && FXApp.this.humanResultsImages != null
+						&& !FXApp.this.srcImages.isEmpty() && !FXApp.this.humanResultsImages.isEmpty()) {
+
+						Map<ImageInfo, ImageInfo> forTests = new HashMap<>();
+
+						FXApp.this.srcImages.keySet().forEach(s -> forTests.put(
+							FXApp.this.srcImages.get(s),
+							FXApp.this.humanResultsImages.get(s)
+						));
+
+						testService.massTest(forTests);
 					}
 				}
 			}
@@ -425,9 +591,9 @@ public class FXApp extends Application {
 				@Override
 				public void handle(ActionEvent event) {
 					if (preprocDiapCB.isSelected()) {
-						FXApp.this.preProcessOptions.add(AlgorythmOptions.GISTO_DIAP);
+						FXApp.this.preProcessOptions.add(AlgorithmOptions.GISTO_DIAP);
 					} else {
-						FXApp.this.preProcessOptions.remove(AlgorythmOptions.GISTO_DIAP);
+						FXApp.this.preProcessOptions.remove(AlgorithmOptions.GISTO_DIAP);
 					}
 				}
 			}
@@ -438,9 +604,9 @@ public class FXApp extends Application {
 				@Override
 				public void handle(ActionEvent event) {
 					if (preprocMedianCB.isSelected()) {
-						FXApp.this.preProcessOptions.add(AlgorythmOptions.MEDIAN_BLUR);
+						FXApp.this.preProcessOptions.add(AlgorithmOptions.MEDIAN_BLUR);
 					} else {
-						FXApp.this.preProcessOptions.remove(AlgorythmOptions.MEDIAN_BLUR);
+						FXApp.this.preProcessOptions.remove(AlgorithmOptions.MEDIAN_BLUR);
 					}
 				}
 			}
@@ -451,9 +617,9 @@ public class FXApp extends Application {
 				@Override
 				public void handle(ActionEvent event) {
 					if (preprocBilaterialCB.isSelected()) {
-						FXApp.this.preProcessOptions.add(AlgorythmOptions.BILATERIAL);
+						FXApp.this.preProcessOptions.add(AlgorithmOptions.BILATERIAL);
 					} else {
-						FXApp.this.preProcessOptions.remove(AlgorythmOptions.BILATERIAL);
+						FXApp.this.preProcessOptions.remove(AlgorithmOptions.BILATERIAL);
 					}
 				}
 			}
@@ -464,9 +630,22 @@ public class FXApp extends Application {
 				@Override
 				public void handle(ActionEvent event) {
 					if (yaprMultiOtsuCB.isSelected()) {
-						FXApp.this.preProcessOptions.add(AlgorythmOptions.MULTI_OTSU);
+						FXApp.this.preProcessOptions.add(AlgorithmOptions.MULTI_OTSU);
 					} else {
-						FXApp.this.preProcessOptions.remove(AlgorythmOptions.MULTI_OTSU);
+						FXApp.this.preProcessOptions.remove(AlgorithmOptions.MULTI_OTSU);
+					}
+				}
+			}
+		);
+
+		coloredResultsCB.setOnAction(
+			new EventHandler<ActionEvent>() {
+				@Override
+				public void handle(ActionEvent event) {
+					if (coloredResultsCB.isSelected()) {
+						FXApp.this.preProcessOptions.add(AlgorithmOptions.COLORED);
+					} else {
+						FXApp.this.preProcessOptions.remove(AlgorithmOptions.COLORED);
 					}
 				}
 			}
@@ -607,6 +786,7 @@ public class FXApp extends Application {
 		//----------------------//
 
 		configureFileChooser(fileChooser);
+		configureDirectoryChooser(directoryChooser);
 		depthCountInput.setText(Integer.toString(4));
 		medianFilterMaskSizeInput.setText(Integer.toString(3));
 
@@ -633,6 +813,13 @@ public class FXApp extends Application {
 		fileChooser.getExtensionFilters().addAll(
 			new FileChooser.ExtensionFilter("JPG", "*.jpg"),
 			new FileChooser.ExtensionFilter("PNG", "*.png")
+		);
+	}
+
+	private void configureDirectoryChooser(final DirectoryChooser directoryChooser) {
+		directoryChooser.setTitle("View Pictures");
+		directoryChooser.setInitialDirectory(
+			new File(System.getProperty("user.home"))
 		);
 	}
 

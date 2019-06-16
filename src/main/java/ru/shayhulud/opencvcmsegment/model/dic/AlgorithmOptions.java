@@ -3,7 +3,7 @@ package ru.shayhulud.opencvcmsegment.model.dic;
 /**
  * Методы предобработки.
  */
-public enum AlgorythmOptions {
+public enum AlgorithmOptions {
 	/**
 	 * Медианный фильтр.
 	 */

@@ -9,7 +9,7 @@ public enum AlgorythmOptions {
 	 */
 	MEDIAN_BLUR,
 	/**
-	 * Билатериальный
+	 * Билатериальный.
 	 */
 	BILATERIAL,
 	/**
@@ -25,7 +25,15 @@ public enum AlgorythmOptions {
 	 */
 	BW_RESULT,
 	/**
-	 * multiotsu
+	 * multiotsu.
 	 */
-	MULTI_OTSU
+	MULTI_OTSU,
+	/**
+	 * Не сохранять промежуточные шаги.
+	 */
+	NO_SAVE_STEPS,
+	/**
+	 * Покраска результата.
+	 */
+	COLORED
 }

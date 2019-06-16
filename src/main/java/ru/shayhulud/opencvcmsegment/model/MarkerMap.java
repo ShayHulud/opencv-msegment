@@ -7,7 +7,6 @@ import org.opencv.core.Mat;
 import org.opencv.core.Size;
 
 import java.time.Duration;
-import java.time.temporal.ChronoUnit;
 
 /**
  * Объект маркерной карты.

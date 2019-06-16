@@ -23,7 +23,6 @@ import ru.shayhulud.opencvcmsegment.common.util.CollectionUtil;
 import ru.shayhulud.opencvcmsegment.common.util.MathUtil;
 import ru.shayhulud.opencvcmsegment.common.util.OutFileNameGenerator;
 import ru.shayhulud.opencvcmsegment.common.util.PixelUtil;
-import ru.shayhulud.opencvcmsegment.exceptions.WrongMatBodyLengthException;
 import ru.shayhulud.opencvcmsegment.model.BrightLevel;
 import ru.shayhulud.opencvcmsegment.model.ImageInfo;
 import ru.shayhulud.opencvcmsegment.model.MarkerMap;
@@ -42,10 +41,9 @@ import java.time.OffsetDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Map;
 import java.util.Random;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -268,7 +266,7 @@ public class PictureService {
 		ii.setDepth(contours.size());
 		saveResult(markers.clone(), ii, ++step, "markers", 10000);
 
-		Mat dst = this.watershed(src, markers, ii.getDepth());
+		Mat dst = this.watershed(src, markers, ii.getDepth(), true);
 		//saveImage(dst, ii, COLOR_METHOD, ++step, "result");
 		saveResult(dst.clone(), ii, ++step, "result");
 
@@ -279,17 +277,17 @@ public class PictureService {
 	public ImageInfo colorAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
 		try {
 			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
-			return colorAutoMarkerWatershed(ii);
+			return colorAutoMarkerWatershed(ii, new HashSet<>());
 		} catch (IOException e) {
 			log.error("There is an error with file stream processing", e);
 			return null;
 		}
 	}
 
-	//TODO: Разбить на операции. Или сделать так, чтобы возвращало пачку маркеров, чтобы можно было waterShed'у передать матрицу с маркерами и сорц.
 	@GUI
-	public ImageInfo colorAutoMarkerWatershed(ImageInfo ii) {
+	public ImageInfo colorAutoMarkerWatershed(ImageInfo ii, Set<AlgorythmOptions> options) {
 
+		boolean colored = options.contains(AlgorythmOptions.COLORED);
 		int step = 0;
 		ii.setMethod(SegMethod.COLOR_METHOD);
 
@@ -305,8 +303,9 @@ public class PictureService {
 				}
 			}
 		}
-		//saveImage(src, ii, COLOR_METHOD, ++step, "black_bg");
-		saveResult(src.clone(), ii, ++step, "black_bg");
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(src.clone(), ii, ++step, "black_bg");
+		}
 
 		Mat kernel = new MatOfFloat(1f, 1f, 1f, 1f, -8f, 1f, 1f, 1f, 1f);
 		//possibly need to clone from src or zeros of src;
@@ -319,24 +318,28 @@ public class PictureService {
 		imgResult.convertTo(imgResult, CvType.CV_8UC3);
 		imgLaplasian.convertTo(imgLaplasian, CvType.CV_8UC3);
 		imgResult.copyTo(src);
-		//saveImage(imgResult, ii, COLOR_METHOD, ++step, "laplassian_sharp");
-		saveResult(imgResult.clone(), ii, ++step, "laplassian_sharp");
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(imgResult.clone(), ii, ++step, "laplassian_sharp");
+		}
 
 		Mat bw = this.bwMat(src);
-		//saveImage(bw, ii, COLOR_METHOD, ++step, "bw");
-		saveResult(bw.clone(), ii, ++step, "bw");
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(bw.clone(), ii, ++step, "bw");
+		}
 
 		Mat distance = new Mat();
 		Imgproc.distanceTransform(bw, distance, Imgproc.CV_DIST_L2, 5);
 		Core.normalize(distance, distance, 0, 1., Core.NORM_MINMAX);
-		//saveImage(distance, ii, COLOR_METHOD, ++step, "distance_transform", 1000);
-		saveResult(distance.clone(), ii, ++step, "distance_transform", 1000);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(distance.clone(), ii, ++step, "distance_transform", 1000);
+		}
 
 		Imgproc.threshold(distance, distance, .4, 1., Imgproc.THRESH_BINARY);
 		Mat kernel1 = Mat.ones(3, 3, CvType.CV_8UC1);
 		Imgproc.dilate(distance, distance, kernel1);
-		//saveImage(distance, ii, COLOR_METHOD, ++step, "distance_peaks", 1000);
-		saveResult(distance.clone(), ii, ++step, "distance_peaks", 1000);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(distance.clone(), ii, ++step, "distance_peaks", 1000);
+		}
 
 		Mat dist_8u = new Mat();
 		distance.convertTo(dist_8u, CvType.CV_8U);
@@ -351,10 +354,11 @@ public class PictureService {
 		ii.setDepth(contours.size());
 		Imgproc.circle(markers, new Point(5, 5), 3, new Scalar(255, 255, 255), -1);
 		//Output markers * 10000
-		//saveImage(markers, ii, COLOR_METHOD, ++step, "markers", 10000d);
-		saveResult(markers.clone(), ii, ++step, "markers", 10000);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(markers.clone(), ii, ++step, "markers", 10000);
+		}
 
-		Mat dst = this.watershed(src, markers, ii.getDepth());
+		Mat dst = this.watershed(src, markers, ii.getDepth(), colored);
 		//saveImage(dst, ii, COLOR_METHOD, ++step, "result");
 		saveResult(dst.clone(), ii, ++step, "result");
 
@@ -370,7 +374,7 @@ public class PictureService {
 	public ImageInfo shapeAutoMarkerWatershed(String picturePath, String outMainFolder, String pictureName) {
 		try {
 			ImageInfo ii = readPicture(picturePath, outMainFolder, pictureName);
-			return shapeAutoMarkerWatershed(ii);
+			return shapeAutoMarkerWatershed(ii, new HashSet<>());
 		} catch (IOException e) {
 			log.error("There is an error with file stream processing", e);
 			return null;
@@ -378,8 +382,9 @@ public class PictureService {
 	}
 
 	@GUI
-	public ImageInfo shapeAutoMarkerWatershed(ImageInfo ii) {
+	public ImageInfo shapeAutoMarkerWatershed(ImageInfo ii, Set<AlgorythmOptions> options) {
 
+		boolean colored = options.contains(AlgorythmOptions.COLORED);
 		int step = 0;
 		ii.setMethod(SegMethod.SHAPE_METHOD);
 
@@ -390,7 +395,9 @@ public class PictureService {
 		srcGray.convertTo(srcGray, CvType.CV_8U);
 		Integer medianmaskBlurSize = this.calculateSizeOfSquareBlurMask(srcGray);
 		Imgproc.medianBlur(srcGray, srcGray, medianmaskBlurSize);
-		saveResult(srcGray.clone(), ii, ++step, "blured_by_" + medianmaskBlurSize + "x" + medianmaskBlurSize);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(srcGray.clone(), ii, ++step, "blured_by_" + medianmaskBlurSize + "x" + medianmaskBlurSize);
+		}
 
 		int lowTreshold = 5;
 		int ratio = 10;
@@ -398,10 +405,12 @@ public class PictureService {
 		Imgproc.Canny(brdGray, brdGray, lowTreshold, lowTreshold * ratio);
 		Mat brdDst = Mat.zeros(src.size(), src.type());
 		src.copyTo(brdDst, brdGray);
-		//saveImage(brdDst, ii, SHAPE_METHOD, ++step, "borders");
-		saveResult(brdDst.clone(), ii, ++step, "borders");
-		//saveImage(brdGray, ii, SHAPE_METHOD, ++step, "gray_borders");
-		saveResult(brdGray.clone(), ii, ++step, "gray_borders");
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(brdDst.clone(), ii, ++step, "borders");
+		}
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(brdGray.clone(), ii, ++step, "gray_borders");
+		}
 		Mat markerMask = brdGray.clone();
 
 		Mat dStep = new Mat(markerMask.size(), markerMask.type());
@@ -409,15 +418,20 @@ public class PictureService {
 		Imgproc.dilate(dStep, markerMask, Mat.ones(5, 5, markerMask.type()));
 		Core.subtract(markerMask, dStep, markerMask);
 
-		saveResult(markerMask.clone(), ii, ++step, "dde_step");
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(markerMask.clone(), ii, ++step, "dde_step");
+		}
 
 		Imgproc.medianBlur(markerMask, markerMask, 3);
-//		Imgproc.morphologyEx(markerMask, markerMask, Imgproc.MORPH_OPEN, Mat.ones(3, 3, markerMask.type()));
-		saveResult(markerMask.clone(), ii, ++step, "dde_step_blurred_3x3");
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(markerMask.clone(), ii, ++step, "dde_step_blurred_3x3");
+		}
 
 		Mat markers = Mat.zeros(markerMask.size(), CvType.CV_32S);
 		Imgproc.connectedComponents(markerMask, markers, 8, CvType.CV_32S);
-		saveResult(markers.clone(), ii, ++step, "markers", 10000);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(markers.clone(), ii, ++step, "markers", 10000);
+		}
 
 		List<MatOfPoint> contours = new ArrayList<>();
 		MatOfInt4 hierarchy = new MatOfInt4();
@@ -429,7 +443,7 @@ public class PictureService {
 		}
 		ii.setDepth(contours.size());
 
-		Mat dst = this.watershed(src, markers, ii.getDepth());
+		Mat dst = this.watershed(src, markers, ii.getDepth(), colored);
 		//saveImage(dst, ii, SHAPE_METHOD, ++step, "result");
 		saveResult(dst.clone(), ii, ++step, "result");
 
@@ -441,150 +455,11 @@ public class PictureService {
 		return ii;
 	}
 
-	//TODO: опциональная предобработка.
-	@GUI
-	public ImageInfo brightDepth(ImageInfo ii, Integer depth) {
-		int step = 0;
-		ii.setMethod(SegMethod.BRIGHT_DEPTH_METHOD);
-		Mat src = ii.getMat().clone();
-
-		Mat srcGray = new Mat();
-		Imgproc.cvtColor(src, srcGray, Imgproc.COLOR_BGR2GRAY);
-		srcGray.convertTo(srcGray, CvType.CV_8U);
-		Integer medianmaskBlurSize = this.calculateSizeOfSquareBlurMask(srcGray);
-		Imgproc.medianBlur(srcGray, srcGray, medianmaskBlurSize);
-		saveResult(srcGray.clone(), ii, ++step, "blured_by_" + medianmaskBlurSize + "x" + medianmaskBlurSize);
-
-		log.info("srcGray type of: {}; channels: {}", srcGray.type(), srcGray.channels());
-
-		//DETECT MAX BRIGHTNESS
-		int maxBrightness = 0;
-		int minBrightness = 255;
-		for (int i = 0; i < srcGray.rows() - 1; i++) {
-			for (int j = 0; j < srcGray.cols() - 1; j++) {
-				int brightness = (int) srcGray.get(i, j)[0];
-
-				if (brightness > maxBrightness) {
-					maxBrightness = brightness;
-				}
-				if (brightness < minBrightness) {
-					minBrightness = brightness;
-				}
-			}
-		}
-		log.info("max brightness: {}; min brightness: {}", maxBrightness, minBrightness);
-
-		//MAKE THRESHOLDS
-		LinkedList<Integer> thresholds = new LinkedList<>();
-		for (int i = 1; i < depth; i++) {
-			int threshold = minBrightness + ((maxBrightness - minBrightness) / depth) * i;
-			threshold = threshold < minBrightness ? minBrightness : threshold;
-			threshold = threshold > maxBrightness ? maxBrightness : threshold;
-			thresholds.add(threshold);
-		}
-		log.info("depth thresholds:{}", thresholds);
-
-		//MAKE LAYERS
-		Map<Integer, Mat> brightMap = new HashMap<Integer, Mat>() {{
-			for (int i = 0; i < depth; i++) {
-				put(i, new Mat(srcGray.size(), srcGray.type()));
-			}
-		}};
-
-		//ALLOCATE TO LAYERS
-		for (int i = 0; i < srcGray.rows() - 1; i++) {
-			for (int j = 0; j < srcGray.cols() - 1; j++) {
-				short brightness = (short) srcGray.get(i, j)[0];
-
-				int lastThreshold = thresholds.getLast();
-				if (brightness > lastThreshold) {
-					brightMap.get(thresholds.size())
-						.put(i, j, new byte[]{(byte) brightness});
-				} else {
-					for (int k = 0; k < thresholds.size(); k++) {
-						int currThreshold = thresholds.get(k);
-						if (brightness <= currThreshold) {
-							brightMap.get(k).put(i, j, new byte[]{(byte) brightness});
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		++step;
-		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
-			Integer _idx = entry.getKey();
-			Mat _mat = entry.getValue();
-			saveResult(_mat.clone(), ii, step, "level_" + _idx + "_of_depth");
-		}
-
-		++step;
-		Integer openMaskSize = this.calculateSizeOfSquareBlurMask(src);
-		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
-			Integer _idx = entry.getKey();
-			Mat _mat = entry.getValue();
-			Imgproc.erode(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
-			Imgproc.dilate(_mat, _mat, Mat.ones(openMaskSize, openMaskSize, _mat.type()));
-			saveResult(_mat.clone(), ii, step, "open_of_level_" + _idx + "_of_depth");
-		}
-
-		//WSHED
-		//TODO: Сортировать карты маркеров перед склейкой по количеству пикселей в маркерах (DESC)
-		//TODO: Подумать, как сделать так, чтобы внешние рамочные маркеры складывались "Вниз" при склейке
-		++step;
-		Mat wshedMarkSumm = new Mat(src.size(), srcGray.type());
-		for (Map.Entry<Integer, Mat> entry : brightMap.entrySet()) {
-			Integer _idx = entry.getKey();
-			Mat _mat = entry.getValue();
-
-			List<MatOfPoint> contours = new ArrayList<>();
-			MatOfInt4 hierarchy = new MatOfInt4();
-			Imgproc.findContours(_mat, contours, hierarchy, Imgproc.RETR_TREE, Imgproc.CHAIN_APPROX_NONE);
-
-			//Можно попробовать отрисовывать каждый маркер на своей матрице, складывать вообще со всех слоей их в один списко и потом сортировать по размеру по убыванию и склеивать.
-			//При таком разбиении можно будет даже нормально строить ректанглы вокруг штук для грабката
-			Mat markers = Mat.zeros(_mat.size(), CvType.CV_32S);
-			for (int i = 0; i < contours.size(); i++) {
-				Imgproc.drawContours(markers, contours, i, Scalar.all(i + 1), -1, 8, hierarchy, Integer.MAX_VALUE, new Point());
-			}
-			saveResult(markers.clone(), ii, step, "markers_of_level_" + _idx + "_of_depth", 10000);
-
-			Mat _eroded = Mat.zeros(wshedMarkSumm.size(), wshedMarkSumm.type());
-			markers.convertTo(_eroded, _eroded.type());
-			Imgproc.erode(_eroded, _eroded, Mat.ones(3, 3, markers.type()));
-			Core.add(wshedMarkSumm, _eroded, wshedMarkSumm);
-
-
-			Mat dst = this.watershed(src, markers, contours.size());
-			saveResult(dst.clone(), ii, step, "result_of_level_" + _idx + "_of_depth");
-		}
-
-		saveResult(wshedMarkSumm.clone(), ii, ++step, "markers_summ_eroded_markers", 10000);
-
-		List<MatOfPoint> contours = new ArrayList<>();
-		MatOfInt4 hierarchy = new MatOfInt4();
-		Imgproc.findContours(wshedMarkSumm, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_NONE);
-		wshedMarkSumm.convertTo(wshedMarkSumm, CvType.CV_32S);
-		Mat dst = this.watershed(src, wshedMarkSumm, contours.size());
-		saveResult(dst.clone(), ii, ++step, "result_summ_eroded_markers");
-
-		Mat bwResult = new Mat();
-		Imgproc.cvtColor(dst, bwResult, Imgproc.COLOR_BGR2GRAY);
-		bwResult.convertTo(bwResult, CvType.CV_8U);
-		saveResult(bwResult.clone(), ii, ++step, "bw_result_markers_summ");
-
-		//GRABCUT
-		//TODO: make grabcut
-		//TODO: Найти, как стоить rectangles вокруг маркеров, и как не уйти в рекурсию при маркере ввиде рамки по контуру изображения.
-
-		return ii;
-	}
-
 	public ImageInfo notConnectedMarkers(ImageInfo ii, Integer depth, Integer filterMaskSize, Set<AlgorythmOptions> options) {
 
 		OffsetDateTime startAlgTime = OffsetDateTime.now();
 
+		boolean colored = options.contains(AlgorythmOptions.COLORED);
 		int step = 0;
 		ii.setMethod(SegMethod.NOT_CONNECTED_MARKERS);
 		Mat src = ii.getMat().clone();
@@ -595,13 +470,17 @@ public class PictureService {
 		if (options.contains(AlgorythmOptions.MEDIAN_BLUR)) {
 			//K<=16
 			Imgproc.medianBlur(srcGray, srcGray, filterMaskSize);
-			saveResult(srcGray.clone(), ii, ++step,
-				"blured_by_" + filterMaskSize + "x" + filterMaskSize + "_" + AlgorythmOptions.MEDIAN_BLUR.name());
+			if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+				saveResult(srcGray.clone(), ii, ++step,
+					"blured_by_" + filterMaskSize + "x" + filterMaskSize + "_" + AlgorythmOptions.MEDIAN_BLUR.name());
+			}
 		} else if (options.contains(AlgorythmOptions.BILATERIAL)) {
 			Mat dst = new Mat();
 			Imgproc.bilateralFilter(srcGray, dst, filterMaskSize, filterMaskSize * 2, filterMaskSize * 2);
-			saveResult(dst.clone(), ii, ++step,
-				"blured_by_" + filterMaskSize + "x" + filterMaskSize + "_" + AlgorythmOptions.BILATERIAL.name());
+			if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+				saveResult(dst.clone(), ii, ++step,
+					"blured_by_" + filterMaskSize + "x" + filterMaskSize + "_" + AlgorythmOptions.BILATERIAL.name());
+			}
 			dst.convertTo(srcGray, CvType.CV_8U);
 		}
 
@@ -651,7 +530,9 @@ public class PictureService {
 		}
 		Mat histOut = histImage.clone();
 		histOut.convertTo(histOut, CvType.CV_8SC3);
-		saveResult(histOut.clone(), ii, step, "bgr_histo");
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(histOut.clone(), ii, step, "bgr_histo");
+		}
 
 		//BRIGHT HISTO
 		++step;
@@ -659,7 +540,9 @@ public class PictureService {
 		Imgproc.calcHist(Arrays.asList(srcGray), new MatOfInt(0), new Mat(), brightHist, new MatOfInt(histSize), new MatOfFloat(range));
 
 		//OUTPUT BRIGHTHISTO
-		saveOutputBrightHisto(ii, step, brightHist, hist_h, hist_w);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveOutputBrightHisto(ii, step, brightHist, hist_h, hist_w);
+		}
 
 		log.info("bright hist size {}", brightHist.size());
 		Mat reducedBrightHist = Mat.zeros(brightHist.rows() / 2, brightHist.cols(), brightHist.type());
@@ -674,7 +557,9 @@ public class PictureService {
 		log.info("reduced btight hist size {}", reducedBrightHist.size());
 
 		//OUTPUT REDUCED BRIGHTHISTO
-		saveOutputBrightHisto(ii, step, reducedBrightHist, hist_h, hist_w);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveOutputBrightHisto(ii, step, reducedBrightHist, hist_h, hist_w);
+		}
 
 		//Collecting ranges
 
@@ -870,7 +755,9 @@ public class PictureService {
 				fontFace, fontScale, Scalar.all(255), thickness
 			);
 		}
-		saveResult(fBrightHistImage.clone(), ii, step, "flex_bright_thresholds");
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(fBrightHistImage.clone(), ii, step, "flex_bright_thresholds");
+		}
 
 		//SHOW BRIGHTS LVEVEL
 
@@ -922,11 +809,13 @@ public class PictureService {
 			}
 		}
 
-		for (MarkerMap markerMap : meanMarkerMaps) {
-			int _idx = markerMap.getIdx();
-			saveResult(markerMap.getAllLevel().clone(), ii, step, "mean_thresh_level_" + _idx + "_of_depth");
-			saveResult(markerMap.getMeanLevel().clone(), ii, step, "mean_level_" + _idx + "_of_depth", 1);
-			saveResult(markerMap.getMarker().clone(), ii, step, "mean_markers_of_level_" + _idx + "_of_depth", 1000);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			for (MarkerMap markerMap : meanMarkerMaps) {
+				int _idx = markerMap.getIdx();
+				saveResult(markerMap.getAllLevel().clone(), ii, step, "mean_thresh_level_" + _idx + "_of_depth");
+				saveResult(markerMap.getMeanLevel().clone(), ii, step, "mean_level_" + _idx + "_of_depth", 1);
+				saveResult(markerMap.getMarker().clone(), ii, step, "mean_markers_of_level_" + _idx + "_of_depth", 1000);
+			}
 		}
 
 		for (MarkerMap mm : meanMarkerMaps) {
@@ -940,12 +829,16 @@ public class PictureService {
 				Core.add(wshedMarkSumm, markerMap.getMarker(), wshedMarkSumm);
 			}
 		}
-		saveResult(wshedMarkSumm.clone(), ii, ++step, "markers_summ", 10000);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(wshedMarkSumm.clone(), ii, ++step, "markers_summ", 10000);
+		}
 
-		Mat coloredMarkers = colorByIndexes(wshedMarkSumm.clone(), meanMarkerMaps.size());
-		saveResult(coloredMarkers.clone(), ii, ++step, "colored_markers_summ");
+		Mat coloredMarkers = colorByIndexes(wshedMarkSumm.clone(), meanMarkerMaps.size(), true);
+		if (!options.contains(AlgorythmOptions.NO_SAVE_STEPS)) {
+			saveResult(coloredMarkers.clone(), ii, ++step, "colored_markers_summ");
+		}
 
-		Mat dst = this.watershed(src, wshedMarkSumm, meanMarkerMaps.size());
+		Mat dst = this.watershed(src, wshedMarkSumm, meanMarkerMaps.size(), colored);
 
 		String resultOptions = options.stream().map(AlgorythmOptions::name).collect(Collectors.joining("_"));
 		saveResult(dst.clone(), ii, ++step,
@@ -1001,17 +894,20 @@ public class PictureService {
 		return area;
 	}
 
-	public Mat watershed(Mat src, Mat markers, Integer depth) {
+	public Mat watershed(Mat src, Mat markers, Integer depth, boolean colored) {
 		Imgproc.watershed(src, markers);
-		return colorByIndexes(markers, depth);
+		return colorByIndexes(markers, depth, colored);
 	}
 
-	private Mat colorByIndexes(Mat markers, Integer depth) {
+	private Mat colorByIndexes(Mat markers, Integer depth, boolean colored) {
 		List<byte[]> colors = new ArrayList<>();
 		for (int i = 0; i < depth; i++) {
-			colors.add(generateBGRColor());
+			if (colored) {
+				colors.add(generateBGRColor());
+			} else {
+				colors.add(new byte[]{(byte) 255, (byte) 255, (byte) 255});
+			}
 		}
-//		byte[] backgroundColor = generateBGRColor();
 		byte[] backgroundColor = new byte[]{0, 0, 0};
 
 		Mat dst = new Mat(markers.size(), CvType.CV_8UC3);
@@ -1026,22 +922,6 @@ public class PictureService {
 			}
 		}
 		return dst;
-	}
-
-	private Mat create3x3Kernel(int type, int[] kernelBody) {
-		if (kernelBody.length != 9) {
-			throw new WrongMatBodyLengthException("wrong kernel length");
-		}
-
-		double[] kernelBodyD = new double[kernelBody.length];
-		for (int i = 0; i < kernelBody.length; i++) {
-			kernelBodyD[i] = (double) kernelBody[i];
-		}
-
-		Mat kernel = new Mat(3, 3, type, new Scalar(kernelBodyD));
-		return kernel;
-		//ToDO: refactor to loops for custom kernel size
-
 	}
 
 	public Mat bwMat(Mat src) {
@@ -1123,4 +1003,6 @@ public class PictureService {
 		}
 		saveResult(brightHistImage.clone(), ii, step, "bright_histo_" + histSize + "_bins");
 	}
+
+
 }

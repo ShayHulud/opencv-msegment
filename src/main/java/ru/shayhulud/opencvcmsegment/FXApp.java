@@ -72,7 +72,9 @@ public class FXApp extends Application {
 	/**
 	 * Сет опций.
 	 */
-	public final Set<AlgorythmOptions> preProcessOptions = new HashSet<>();
+	public final Set<AlgorythmOptions> preProcessOptions = new HashSet<AlgorythmOptions>() {{
+		add(AlgorythmOptions.COLORED);
+	}};
 
 	@Override
 	public void start(Stage stage) {
@@ -141,9 +143,6 @@ public class FXApp extends Application {
 		Button shapeWshedButton = new Button("shape wshed");
 		shapeWshedButton.getStyleClass().addAll("select-control");
 		Separator vAlgSeparator_2 = new Separator(Orientation.VERTICAL);
-		Button brightDepthButton = new Button("bright dpth");
-		brightDepthButton.getStyleClass().addAll("select-control");
-		Separator vAlgSeparator_3 = new Separator(Orientation.VERTICAL);
 		Button notConnectedButton = new Button("not connected");
 		notConnectedButton.getStyleClass().addAll("select-control");
 
@@ -264,8 +263,6 @@ public class FXApp extends Application {
 			vAlgSeparator_1,
 			shapeWshedButton,
 			vAlgSeparator_2,
-			brightDepthButton,
-			vAlgSeparator_3,
 			notConnectedButton
 		);
 		paramsBox.getChildren().addAll(
@@ -343,7 +340,10 @@ public class FXApp extends Application {
 				public void handle(ActionEvent event) {
 					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null) {
 						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
-						FXApp.this.toAlgorythmsImage = pictureService.colorAutoMarkerWatershed(FXApp.this.toAlgorythmsImage);
+						FXApp.this.toAlgorythmsImage = pictureService.colorAutoMarkerWatershed(
+							FXApp.this.toAlgorythmsImage,
+							FXApp.this.preProcessOptions
+						);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
 							FXApp.this.toAlgorythmsImage.getResults().stream()
 								.map(Result::getStepName)
@@ -382,27 +382,9 @@ public class FXApp extends Application {
 				public void handle(ActionEvent event) {
 					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null && FXApp.this.handMarkers != null) {
 						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
-						FXApp.this.toAlgorythmsImage = pictureService.shapeAutoMarkerWatershed(FXApp.this.toAlgorythmsImage);
-						oiDropDownList.setItems(FXCollections.observableArrayList(
-							FXApp.this.toAlgorythmsImage.getResults().stream()
-								.map(Result::getStepName)
-								.collect(Collectors.toList())
-						));
-						oiDropDownList.setValue(CollectionUtil.getLastOf(oiDropDownList.getItems()));
-					}
-				}
-			}
-		);
-
-		brightDepthButton.setOnAction(
-			new EventHandler<ActionEvent>() {
-				@Override
-				public void handle(ActionEvent event) {
-					if (FXApp.this.processedImage != null && FXApp.this.toAlgorythmsImage != null && FXApp.this.handMarkers != null) {
-						FXApp.this.toAlgorythmsImage = FXApp.this.processedImage.clone();
-						FXApp.this.toAlgorythmsImage = pictureService.brightDepth(
+						FXApp.this.toAlgorythmsImage = pictureService.shapeAutoMarkerWatershed(
 							FXApp.this.toAlgorythmsImage,
-							Integer.parseInt(depthCountInput.getText())
+							FXApp.this.preProcessOptions
 						);
 						oiDropDownList.setItems(FXCollections.observableArrayList(
 							FXApp.this.toAlgorythmsImage.getResults().stream()

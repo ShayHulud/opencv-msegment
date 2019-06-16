@@ -6,6 +6,9 @@ import lombok.NoArgsConstructor;
 
 import java.util.List;
 
+/**
+ * Результат шага рекурсии для Мульти Оцу.
+ */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
